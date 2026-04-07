@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Isometric Cube</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    /* ── Sidebar shell ── */
+    #sidebar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 100vh;
+      width: 260px;
+      background: #f5f5f5;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+      overflow: hidden;
+      color: #1a1a1a;
+    }
+
+    /* ── Title bar ── */
+    #sidebar-title {
+      padding: 14px 16px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #111;
+      letter-spacing: 0.02em;
+      border-bottom: 1px solid #e0e0e0;
+      flex-shrink: 0;
+      background: #fff;
+    }
+
+    /* ── Settings area ── */
+    #sidebar-header {
+      flex-shrink: 0;
+    }
+
+    /* ── Section groups ── */
+    .section {
+      padding: 10px 14px 12px;
+      border-bottom: 1px solid #e8e8e8;
+    }
+    .section-title {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #999;
+      margin-bottom: 10px;
+    }
+
+    /* ── Field rows ── */
+    .field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 26px;
+    }
+    .field + .field { margin-top: 7px; }
+
+    label {
+      font-size: 12px;
+      color: #555;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* ── Number input ── */
+    input[type="number"] {
+      width: 56px;
+      padding: 4px 6px;
+      font-size: 12px;
+      background: #fff;
+      border: 1px solid #d0d0d0;
+      border-radius: 4px;
+      color: #1a1a1a;
+      text-align: center;
+    }
+    input[type="number"]:focus { outline: none; border-color: #222; }
+
+    /* ── Range slider ── */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 3px;
+      border-radius: 2px;
+      background: #d8d8d8;
+      cursor: pointer;
+      flex: 1;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #222;
+      cursor: pointer;
+    }
+    input[type="range"]:focus { outline: none; }
+
+    /* ── Select ── */
+    select {
+      flex: 1;
+      font-size: 12px;
+      padding: 4px 6px;
+      background: #fff;
+      border: 1px solid #d0d0d0;
+      border-radius: 4px;
+      color: #1a1a1a;
+      cursor: pointer;
+    }
+    select:focus { outline: none; border-color: #222; }
+
+    /* ── Toggle switch (replaces checkbox) ── */
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 26px;
+    }
+    .toggle-wrap + .toggle-wrap { margin-top: 7px; }
+    .toggle-wrap label { font-size: 12px; color: #555; }
+    .toggle {
+      position: relative;
+      width: 30px; height: 16px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: #d0d0d0;
+      border-radius: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 12px; height: 12px;
+      left: 2px; top: 2px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle input:checked + .toggle-slider { background: #222; }
+    .toggle input:checked + .toggle-slider::before {
+      transform: translateX(14px);
+    }
+
+    /* ── Color input ── */
+    input[type="color"] {
+      width: 28px; height: 22px;
+      padding: 0 2px;
+      border: 1px solid #d0d0d0;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #fff;
+      flex-shrink: 0;
+    }
+
+    /* ── Value badge ── */
+    .val {
+      font-size: 11px;
+      color: #888;
+      min-width: 26px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ── Action buttons ── */
+    .btn-group {
+      display: flex;
+      gap: 6px;
+      padding: 10px 14px;
+      border-bottom: 1px solid #e8e8e8;
+    }
+    .btn-group.two > button { flex: 1; }
+
+    button.action-btn {
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid #d0d0d0;
+      border-radius: 5px;
+      background: #fff;
+      color: #444;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    button.action-btn:hover { background: #f0f0f0; border-color: #bbb; color: #111; }
+    button.action-btn.primary {
+      background: #222;
+      border-color: #111;
+      color: #fff;
+    }
+    button.action-btn.primary:hover { background: #000; }
+    button.action-btn.danger {
+      border-color: #e0b0b0;
+      color: #c0392b;
+    }
+    button.action-btn.danger:hover { background: #fdf0f0; border-color: #c0392b; }
+
+    /* ── Cube list ── */
+    #color-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: #f5f5f5;
+    }
+    #color-list::-webkit-scrollbar { width: 4px; }
+    #color-list::-webkit-scrollbar-track { background: transparent; }
+    #color-list::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+
+    .cube-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding: 8px 8px 7px;
+      border-radius: 6px;
+      border: 1px solid #e0e0e0;
+      background: #fff;
+      transition: border-color 0.15s;
+    }
+    .cube-row:hover { border-color: #c0c0c0; }
+    .cube-row.drag-over { border-color: #222; background: #f0f0f0; }
+    .cube-row.selected {
+      border-color: #222;
+      background: #f0f0f0;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.12);
+    }
+
+    .cube-row-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cube-row-top label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #222;
+      flex: 1;
+    }
+
+    .drag-handle {
+      cursor: grab;
+      color: #bbb;
+      font-size: 13px;
+      line-height: 1;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .drag-handle:hover { color: #888; }
+    .drag-handle:active { cursor: grabbing; }
+
+    .cube-remove-btn {
+      width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: #bbb;
+      cursor: pointer;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .cube-remove-btn:hover { background: #fde8e8; color: #c0392b; }
+
+    .cube-text-input {
+      width: 100%;
+      padding: 5px 7px;
+      font-size: 12px;
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      color: #222;
+    }
+    .cube-text-input:focus { outline: none; border-color: #222; }
+    .cube-text-input::placeholder { color: #bbb; }
+
+    .cube-face-select {
+      width: 100%;
+      padding: 5px 6px;
+      font-size: 12px;
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      color: #222;
+    }
+    .cube-face-select:focus { outline: none; border-color: #222; }
+
+    .cube-pos-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .cube-pos-row label {
+      font-size: 10px;
+      color: #aaa;
+      flex-shrink: 0;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .cube-pos-input {
+      flex: 1;
+      padding: 4px 4px;
+      font-size: 11px;
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      color: #222;
+      text-align: center;
+    }
+    .cube-pos-input:focus { outline: none; border-color: #222; }
+
+    #scene { display: block; margin-left: 260px; }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <div id="sidebar-title">Isometric Cube Builder</div>
+    <div id="sidebar-header">
+
+      <!-- Layout section -->
+      <div class="section">
+        <div class="section-title">Layout</div>
+        <div class="field">
+          <label for="cubeCount">Cubes</label>
+          <input type="number" id="cubeCount" min="1" max="64" value="1">
+        </div>
+        <div class="field">
+          <label for="stackDir">Stack</label>
+          <select id="stackDir">
+            <option value="auto">Auto</option>
+            <option value="x">Horizontal X</option>
+            <option value="y">Depth Y</option>
+            <option value="z">Vertical Z</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="gapSlider">Gap</label>
+          <input type="range" id="gapSlider" min="0" max="1" step="0.01" value="0">
+          <span class="val" id="gapValue">0.00</span>
+        </div>
+        <div class="field">
+          <label for="scaleSlider">Scale</label>
+          <input type="range" id="scaleSlider" min="0.2" max="3" step="0.05" value="1">
+          <span class="val" id="scaleValue">1.0</span>
+        </div>
+        <div class="toggle-wrap">
+          <label for="customMode">Custom positions</label>
+          <label class="toggle">
+            <input type="checkbox" id="customMode">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Appearance section -->
+      <div class="section">
+        <div class="section-title">Appearance</div>
+        <div class="field">
+          <label for="strokeWidth">Stroke</label>
+          <input type="range" id="strokeWidth" min="0" max="6" step="0.5" value="1.5">
+          <span class="val" id="strokeWidthValue">1.5</span>
+        </div>
+        <div class="field">
+          <label for="strokeColor">Stroke color</label>
+          <input type="color" id="strokeColor" value="#000000">
+        </div>
+        <div class="field">
+          <label for="cornerRadius">Rounded</label>
+          <input type="range" id="cornerRadius" min="0" max="20" step="1" value="0">
+          <span class="val" id="cornerRadiusValue">0</span>
+        </div>
+        <div class="field">
+          <label for="bgColor">Background</label>
+          <input type="color" id="bgColor" value="#ffffff">
+        </div>
+        <div class="toggle-wrap">
+          <label for="flatShading">Flat shading</label>
+          <label class="toggle">
+            <input type="checkbox" id="flatShading">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="toggle-wrap">
+          <label for="showShadow">Shadow</label>
+          <label class="toggle">
+            <input type="checkbox" id="showShadow">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Text section -->
+      <div class="section">
+        <div class="section-title">Text</div>
+        <div class="field">
+          <label for="fontSlider">Size</label>
+          <input type="range" id="fontSlider" min="4" max="40" step="1" value="12">
+          <span class="val" id="fontValue">12</span>
+        </div>
+        <div class="toggle-wrap">
+          <label for="autoLabel">Auto number</label>
+          <label class="toggle">
+            <input type="checkbox" id="autoLabel">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Actions section -->
+      <div class="btn-group two">
+        <button id="saveJson" class="action-btn">Save JSON</button>
+        <button id="loadJson" class="action-btn">Load JSON</button>
+        <input type="file" id="loadJsonFile" accept=".json" style="display:none;">
+      </div>
+      <div class="btn-group two">
+        <button id="exportSvg" class="action-btn primary">Export SVG</button>
+        <button id="deselectAll" class="action-btn">Deselect all</button>
+      </div>
+      <div class="btn-group">
+        <button id="clearStorage" class="action-btn danger" style="flex:1;">Clear settings</button>
+      </div>
+
+    </div>
+    <div id="color-list"></div>
+  </div>
+
+  <svg id="scene" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <script>
+    const S = 60;
+    const DX = S * Math.sqrt(3) / 2;
+    const DY = S / 2;
+
+    const cubeColors     = {};
+    const cubeTexts      = {};
+    const cubeFaces      = {};
+    const cubePositions  = {}; // custom mode: {i: [gx,gy,gz]}
+
+    function project(gx, gy, gz) {
+      return {
+        x: (gx - gy) * DX,
+        y: (gx + gy) * DY - gz * S
+      };
+    }
+
+    function projectWithGap(cubeGx, cubeGy, cubeGz, localX, localY, localZ, gap) {
+      const ox = cubeGx * (1 + gap) + localX;
+      const oy = cubeGy * (1 + gap) + localY;
+      const oz = cubeGz * (1 + gap) + localZ;
+      return project(ox, oy, oz);
+    }
+
+    function pGap(cubeGx, cubeGy, cubeGz, lx, ly, lz, gap) {
+      const { x, y } = projectWithGap(cubeGx, cubeGy, cubeGz, lx, ly, lz, gap);
+      return `${x},${y}`;
+    }
+
+    function hexToRgb(hex) {
+      const n = parseInt(hex.replace('#', ''), 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+
+    function rgbToHex([r, g, b]) {
+      return '#' + [r, g, b].map(v => Math.min(255, Math.max(0, Math.round(v))).toString(16).padStart(2, '0')).join('');
+    }
+
+    function rgbToHsl([r, g, b]) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h = 0, s = 0, l = (max + min) / 2;
+      if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+          case g: h = ((b - r) / d + 2) / 6; break;
+          case b: h = ((r - g) / d + 4) / 6; break;
+        }
+      }
+      return [h, s, l];
+    }
+
+    function hslToRgb([h, s, l]) {
+      if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const pp = 2 * l - q;
+      return [
+        Math.round(hue2rgb(pp, q, h + 1/3) * 255),
+        Math.round(hue2rgb(pp, q, h) * 255),
+        Math.round(hue2rgb(pp, q, h - 1/3) * 255),
+      ];
+    }
+
+    function deriveFaceColors(topHex) {
+      const flat = document.getElementById('flatShading').checked;
+      if (flat) return { top: topHex, left: topHex, right: topHex };
+      const [h, s, l] = rgbToHsl(hexToRgb(topHex));
+      return {
+        top:   topHex,
+        left:  rgbToHex(hslToRgb([h, s, Math.max(0, l - 0.15)])),
+        right: rgbToHex(hslToRgb([h, s, Math.max(0, l - 0.28)])),
+      };
+    }
+
+    function textColorForBg(hex) {
+      const [r, g, b] = hexToRgb(hex).map(v => {
+        v /= 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      });
+      const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      return L > 0.179 ? '#000000' : '#ffffff';
+    }
+
+    function generatePositions(n) {
+      const dir = document.getElementById('stackDir').value;
+      if (dir === 'x') {
+        return Array.from({length: n}, (_, i) => [i, 0, 0]);
+      }
+      if (dir === 'y') {
+        return Array.from({length: n}, (_, i) => [0, i, 0]);
+      }
+      if (dir === 'z') {
+        return Array.from({length: n}, (_, i) => [0, 0, i]);
+      }
+      // auto
+      if (n <= 3) return Array.from({length: n}, (_, i) => [i, 0, 0]);
+      const size = Math.ceil(Math.cbrt(n));
+      const positions = [];
+      outer: for (let gz = 0; gz < size; gz++) {
+        for (let gy = 0; gy < size; gy++) {
+          for (let gx = 0; gx < size; gx++) {
+            positions.push([gx, gy, gz]);
+            if (positions.length === n) break outer;
+          }
+        }
+      }
+      return positions;
+    }
+
+    // Draws text on a parallelogram face defined by three screen-space points:
+    //   origin (bottom-left), rightPt (bottom-right), upPt (top-left)
+    // The text is centered and correctly skewed to match the face.
+    function drawTextOnFace(svg, lines, origin, rightPt, upPt, faceFill, fontSize) {
+      const cx = (origin.x + rightPt.x + upPt.x + (rightPt.x + upPt.x - origin.x)) / 4;
+      const cy = (origin.y + rightPt.y + upPt.y + (rightPt.y + upPt.y - origin.y)) / 4;
+
+      // Right axis (origin → rightPt)
+      const rx = rightPt.x - origin.x;
+      const ry = rightPt.y - origin.y;
+      const faceWidth = Math.sqrt(rx * rx + ry * ry);
+
+      // Up axis (origin → upPt)
+      const ux = upPt.x - origin.x;
+      const uy = upPt.y - origin.y;
+      const faceHeight = Math.sqrt(ux * ux + uy * uy);
+
+      // matrix: local +x → right axis (normalized), local +y → downward on face (negate up)
+      const a  =  rx / faceWidth;
+      const b  =  ry / faceWidth;
+      const c  = -(ux / faceHeight);
+      const d_ = -(uy / faceHeight);
+
+      const textColor = textColorForBg(faceFill);
+      const lineSpacing = fontSize * 1.2;
+      const totalHeight = (lines.length - 1) * lineSpacing;
+
+      lines.forEach((line, idx) => {
+        const localY = -totalHeight / 2 + idx * lineSpacing;
+        const screenOffX = c  * localY;
+        const screenOffY = d_ * localY;
+
+        const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t.textContent = line;
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('dominant-baseline', 'middle');
+        t.setAttribute('font-size', fontSize);
+        t.setAttribute('font-family', 'sans-serif');
+        t.setAttribute('font-weight', 'bold');
+        t.setAttribute('fill', textColor);
+        t.setAttribute('pointer-events', 'none');
+        t.setAttribute('transform', `matrix(${a},${b},${c},${d_},${cx + screenOffX},${cy + screenOffY})`);
+        svg.appendChild(t);
+      });
+    }
+
+    function drawCube(gx, gy, gz, svg, ox, oy, colors, gap, text, textFace, cubeIndex) {
+      const g = gap;
+
+      const vp = (lx, ly, lz) => {
+        const { x, y } = projectWithGap(gx, gy, gz, lx, ly, lz, g);
+        return { x: x + ox, y: y + oy };
+      };
+
+      const shift = pts => pts.map(str => {
+        const [x, y] = str.split(',').map(Number);
+        return `${x + ox},${y + oy}`;
+      }).join(' ');
+
+      const pg = (lx, ly, lz) => pGap(gx, gy, gz, lx, ly, lz, g);
+
+      const topPts  = [pg(0,0,1), pg(1,0,1), pg(1,1,1), pg(0,1,1)];
+      const leftPts = [pg(0,1,0), pg(1,1,0), pg(1,1,1), pg(0,1,1)];
+      const rightPts= [pg(1,0,0), pg(1,1,0), pg(1,1,1), pg(1,0,1)];
+
+      const strokeW     = parseFloat(document.getElementById('strokeWidth').value);
+      const strokeCol   = document.getElementById('strokeColor').value;
+      const cornerR     = parseInt(document.getElementById('cornerRadius').value);
+
+      // Build a rounded parallelogram path from 4 points
+      function roundedParallelogram(pts) {
+        const points = pts.map(p => { const [x,y] = p.split(',').map(Number); return {x: x+ox, y: y+oy}; });
+        if (cornerR === 0) {
+          return 'M ' + points.map(p => `${p.x},${p.y}`).join(' L ') + ' Z';
+        }
+        const n = points.length;
+        let d = '';
+        for (let i = 0; i < n; i++) {
+          const prev = points[(i + n - 1) % n];
+          const curr = points[i];
+          const next = points[(i + 1) % n];
+          // Vector from curr toward prev and curr toward next
+          const dx0 = prev.x - curr.x, dy0 = prev.y - curr.y;
+          const dx1 = next.x - curr.x, dy1 = next.y - curr.y;
+          const len0 = Math.sqrt(dx0*dx0 + dy0*dy0);
+          const len1 = Math.sqrt(dx1*dx1 + dy1*dy1);
+          const r = Math.min(cornerR, len0 / 2, len1 / 2);
+          const p0x = curr.x + (dx0 / len0) * r;
+          const p0y = curr.y + (dy0 / len0) * r;
+          const p1x = curr.x + (dx1 / len1) * r;
+          const p1y = curr.y + (dy1 / len1) * r;
+          if (i === 0) d += `M ${p0x},${p0y}`;
+          else         d += ` L ${p0x},${p0y}`;
+          d += ` Q ${curr.x},${curr.y} ${p1x},${p1y}`;
+        }
+        d += ' Z';
+        return d;
+      }
+
+      // Wrap cube faces in a group for click selection
+      const cubeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      cubeGroup.setAttribute('data-cube-index', cubeIndex);
+      cubeGroup.style.cursor = 'pointer';
+      cubeGroup.addEventListener('click', () => selectCube(cubeIndex));
+      svg.appendChild(cubeGroup);
+
+      [
+        { pts: leftPts,  fill: colors.left  },
+        { pts: rightPts, fill: colors.right },
+        { pts: topPts,   fill: colors.top   },
+      ].forEach(({ pts, fill }) => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        el.setAttribute('d', roundedParallelogram(pts));
+        el.setAttribute('fill', fill);
+        if (strokeW > 0) {
+          el.setAttribute('stroke', strokeCol);
+          el.setAttribute('stroke-width', strokeW);
+        } else {
+          el.setAttribute('stroke', 'none');
+        }
+        el.setAttribute('stroke-linejoin', 'round');
+        cubeGroup.appendChild(el);
+      });
+
+      if (text && text.trim()) {
+        const lines = text.trim().split('_').map(l => l.trim()).filter(l => l.length > 0);
+        const fontSize = parseInt(document.getElementById('fontSlider').value);
+
+        const drawLeft  = () => drawTextOnFace(cubeGroup, lines, vp(0,1,0), vp(1,1,0), vp(0,1,1), colors.left,  fontSize);
+        const drawRight = () => drawTextOnFace(cubeGroup, lines, vp(1,1,0), vp(1,0,0), vp(1,1,1), colors.right, fontSize);
+        const drawTop   = () => drawTextOnFace(cubeGroup, lines, vp(0,1,1), vp(1,1,1), vp(0,0,1), colors.top,   fontSize);
+
+        if      (textFace === 'left')  drawLeft();
+        else if (textFace === 'right') drawRight();
+        else if (textFace === 'top')   drawTop();
+        else if (textFace === 'all')   { drawLeft(); drawRight(); drawTop(); }
+      }
+    }
+
+    function removeCube(idx) {
+      const count = Math.min(64, Math.max(1, parseInt(document.getElementById('cubeCount').value) || 1));
+      if (count <= 1) return;
+      // Shift all data down from idx
+      for (let j = idx; j < count - 1; j++) {
+        cubeColors[j]    = cubeColors[j + 1];
+        cubeTexts[j]     = cubeTexts[j + 1];
+        cubeFaces[j]     = cubeFaces[j + 1];
+        cubePositions[j] = cubePositions[j + 1];
+      }
+      delete cubeColors[count - 1];
+      delete cubeTexts[count - 1];
+      delete cubeFaces[count - 1];
+      delete cubePositions[count - 1];
+      document.getElementById('cubeCount').value = count - 1;
+      render();
+    }
+
+    function buildCubeRow(i) {
+      if (!cubeColors[i])    cubeColors[i]    = '#ffffff';
+      if (!cubeTexts[i])     cubeTexts[i]     = '';
+      if (!cubeFaces[i])     cubeFaces[i]     = 'left';
+      if (!cubePositions[i]) cubePositions[i] = [i, 0, 0];
+
+      const row = document.createElement('div');
+      row.className = 'cube-row';
+      row.draggable = true;
+      row.dataset.index = i;
+
+      row.addEventListener('dragstart', e => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', i);
+        setTimeout(() => row.style.opacity = '0.4', 0);
+      });
+      row.addEventListener('dragend', () => row.style.opacity = '1');
+      row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over'); });
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+      row.addEventListener('drop', e => {
+        e.preventDefault();
+        row.classList.remove('drag-over');
+        const fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+        const toIdx   = parseInt(row.dataset.index);
+        if (fromIdx === toIdx) return;
+        const shiftSwap = (obj, a, b) => { const t = obj[a]; obj[a] = obj[b]; obj[b] = t; };
+        const dir = fromIdx < toIdx ? 1 : -1;
+        for (let j = fromIdx; j !== toIdx; j += dir) {
+          shiftSwap(cubeColors,    j, j + dir);
+          shiftSwap(cubeTexts,     j, j + dir);
+          shiftSwap(cubeFaces,     j, j + dir);
+          shiftSwap(cubePositions, j, j + dir);
+        }
+        render();
+      });
+
+      // Top row: handle + label + color + remove
+      const top = document.createElement('div');
+      top.className = 'cube-row-top';
+
+      const handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.textContent = '⠿';
+      handle.title = 'Drag to reorder';
+
+      const lbl = document.createElement('label');
+      lbl.textContent = `Cube ${i + 1}`;
+
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.value = cubeColors[i];
+      colorInput.addEventListener('input', e => { cubeColors[i] = e.target.value; renderScene(); });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'cube-remove-btn';
+      removeBtn.textContent = '✕';
+      removeBtn.title = 'Remove cube';
+      removeBtn.addEventListener('click', () => removeCube(i));
+
+      top.appendChild(handle);
+      top.appendChild(lbl);
+      top.appendChild(colorInput);
+      top.appendChild(removeBtn);
+
+      const autoLabel = document.getElementById('autoLabel').checked;
+      if (autoLabel) cubeTexts[i] = String(i + 1);
+
+      const textInput = document.createElement('input');
+      textInput.type = 'text';
+      textInput.className = 'cube-text-input';
+      textInput.placeholder = 'Label…';
+      textInput.value = cubeTexts[i];
+      textInput.addEventListener('input', e => { cubeTexts[i] = e.target.value; renderScene(); });
+
+      const faceSelect = document.createElement('select');
+      faceSelect.className = 'cube-face-select';
+      [['left','Left'],['right','Right'],['top','Top'],['all','All sides']].forEach(([val, label]) => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = label;
+        if (val === cubeFaces[i]) opt.selected = true;
+        faceSelect.appendChild(opt);
+      });
+      faceSelect.addEventListener('change', e => { cubeFaces[i] = e.target.value; renderScene(); });
+
+      row.appendChild(top);
+      row.appendChild(textInput);
+      row.appendChild(faceSelect);
+
+      // Custom position inputs (shown when custom mode is on)
+      const posRow = document.createElement('div');
+      posRow.className = 'cube-pos-row';
+      posRow.style.display = document.getElementById('customMode').checked ? 'flex' : 'none';
+
+      const pos = cubePositions[i] || [i, 0, 0];
+      ['X','Y','Z'].forEach((axis, ai) => {
+        const lbl2 = document.createElement('label');
+        lbl2.textContent = axis + ':';
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.className = 'cube-pos-input';
+        inp.value = pos[ai];
+        inp.min = -20; inp.max = 20;
+        inp.addEventListener('input', e => {
+          if (!cubePositions[i]) cubePositions[i] = [0, 0, 0];
+          cubePositions[i][ai] = parseInt(e.target.value) || 0;
+          renderScene();
+        });
+        posRow.appendChild(lbl2);
+        posRow.appendChild(inp);
+      });
+
+      row.appendChild(posRow);
+      return row;
+    }
+
+    function updateColorList(count) {
+      const list = document.getElementById('color-list');
+      // Full rebuild to keep indices correct
+      list.innerHTML = '';
+      for (let i = 0; i < count; i++) {
+        list.appendChild(buildCubeRow(i));
+      }
+    }
+
+    let selectedCube = null;
+
+    function selectCube(index) {
+      selectedCube = index;
+      // Highlight sidebar row
+      document.querySelectorAll('.cube-row').forEach((row, i) => {
+        row.classList.toggle('selected', i === index);
+      });
+      // Scroll sidebar row into view
+      const rows = document.querySelectorAll('.cube-row');
+      if (rows[index]) rows[index].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // Highlight in SVG: dim all others
+      document.querySelectorAll('[data-cube-index]').forEach(g => {
+        const idx = parseInt(g.getAttribute('data-cube-index'));
+        g.style.opacity = (idx === index) ? '1' : '0.4';
+      });
+    }
+
+    function clearSelection() {
+      selectedCube = null;
+      document.querySelectorAll('.cube-row').forEach(row => row.classList.remove('selected'));
+      document.querySelectorAll('[data-cube-index]').forEach(g => g.style.opacity = '1');
+    }
+
+    function renderScene() {
+      const count = Math.min(64, Math.max(1, parseInt(document.getElementById('cubeCount').value) || 1));
+      const gap   = parseFloat(document.getElementById('gapSlider').value);
+      const scale = parseFloat(document.getElementById('scaleSlider').value);
+      const svg   = document.getElementById('scene');
+      svg.innerHTML = '';
+
+      const customMode = document.getElementById('customMode').checked;
+      const positions = customMode
+        ? Array.from({length: count}, (_, i) => cubePositions[i] || [i, 0, 0])
+        : generatePositions(count);
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      positions.forEach(([gx, gy, gz]) => {
+        for (let lx = 0; lx <= 1; lx++)
+        for (let ly = 0; ly <= 1; ly++)
+        for (let lz = 0; lz <= 1; lz++) {
+          const { x, y } = projectWithGap(gx, gy, gz, lx, ly, lz, gap);
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      });
+
+      const PAD = 20;
+      const w = ((maxX - minX) + PAD * 2) * scale;
+      const h = ((maxY - minY) + PAD * 2) * scale;
+      const ox = -minX + PAD;
+      const oy = -minY + PAD;
+
+      svg.setAttribute('width', w);
+      svg.setAttribute('height', h);
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      svg.onclick = e => { if (e.target === svg) clearSelection(); };
+      svg.ondblclick = () => clearSelection();
+
+      // Blur filter for shadow
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      defs.innerHTML = `<filter id="shadowBlur" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="6"/>
+      </filter>`;
+      svg.appendChild(defs);
+
+      // Wrap everything in a scaled group
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', `scale(${scale})`);
+      svg.appendChild(g);
+
+      const showShadow = document.getElementById('showShadow').checked;
+      const sorted = positions.map((pos, i) => ({ pos, i }))
+        .sort((a, b) => (a.pos[0] + a.pos[1] + a.pos[2]) - (b.pos[0] + b.pos[1] + b.pos[2]));
+
+      // Draw shadows first (below cubes)
+      if (showShadow) {
+        sorted.forEach(({ pos: [gx, gy, gz] }) => {
+          // Shadow is the cube's footprint projected onto gz=0 plane, offset slightly down-right
+          const shadowOffX = 8;
+          const shadowOffY = 10;
+          const corners = [
+            [0,0,0],[1,0,0],[1,1,0],[0,1,0]
+          ].map(([lx,ly,lz]) => {
+            const { x, y } = projectWithGap(gx, gy, gz, lx, ly, lz, gap);
+            return `${x + ox + shadowOffX},${y + oy + shadowOffY}`;
+          });
+          const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          poly.setAttribute('points', corners.join(' '));
+          poly.setAttribute('fill', 'rgba(0,0,0,0.25)');
+          poly.setAttribute('filter', 'url(#shadowBlur)');
+          g.appendChild(poly);
+        });
+      }
+
+      sorted.forEach(({ pos: [gx, gy, gz], i }) => {
+        const topHex  = cubeColors[i] || '#ffffff';
+        const text    = cubeTexts[i]  || '';
+        const face    = cubeFaces[i]  || 'left';
+        drawCube(gx, gy, gz, g, ox, oy, deriveFaceColors(topHex), gap, text, face, i);
+      });
+    }
+
+    const STORAGE_KEY = 'isocube_settings';
+
+    function saveSettings() {
+      const settings = {
+        count:     document.getElementById('cubeCount').value,
+        gap:       document.getElementById('gapSlider').value,
+        font:      document.getElementById('fontSlider').value,
+        scale:     document.getElementById('scaleSlider').value,
+        bgColor:   document.getElementById('bgColor').value,
+        autoLabel:    document.getElementById('autoLabel').checked,
+        flatShading:  document.getElementById('flatShading').checked,
+        showShadow:   document.getElementById('showShadow').checked,
+        strokeWidth:  document.getElementById('strokeWidth').value,
+        strokeColor:  document.getElementById('strokeColor').value,
+        cornerRadius: document.getElementById('cornerRadius').value,
+        stackDir:     document.getElementById('stackDir').value,
+        customMode:   document.getElementById('customMode').checked,
+        cubeColors:     { ...cubeColors    },
+        cubeTexts:      { ...cubeTexts     },
+        cubeFaces:      { ...cubeFaces     },
+        cubePositions:  { ...cubePositions },
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    }
+
+    function loadSettings() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      try {
+        const s = JSON.parse(raw);
+        document.getElementById('cubeCount').value   = s.count   ?? 1;
+        document.getElementById('gapSlider').value   = s.gap     ?? 0;
+        document.getElementById('fontSlider').value  = s.font    ?? 12;
+        document.getElementById('scaleSlider').value = s.scale   ?? 1;
+        document.getElementById('bgColor').value     = s.bgColor ?? '#ffffff';
+        document.getElementById('autoLabel').checked   = s.autoLabel   ?? false;
+        document.getElementById('flatShading').checked    = s.flatShading  ?? false;
+        document.getElementById('showShadow').checked     = s.showShadow   ?? false;
+        document.getElementById('strokeWidth').value      = s.strokeWidth  ?? 1.5;
+        document.getElementById('strokeColor').value      = s.strokeColor  ?? '#000000';
+        document.getElementById('cornerRadius').value     = s.cornerRadius ?? 0;
+        document.getElementById('strokeWidthValue').textContent  = s.strokeWidth  ?? 1.5;
+        document.getElementById('cornerRadiusValue').textContent = s.cornerRadius ?? 0;
+        document.getElementById('stackDir').value         = s.stackDir     ?? 'auto';
+        document.getElementById('customMode').checked     = s.customMode   ?? false;
+        document.getElementById('gapValue').textContent   = parseFloat(s.gap   ?? 0).toFixed(2);
+        document.getElementById('fontValue').textContent  = s.font  ?? 12;
+        document.getElementById('scaleValue').textContent = parseFloat(s.scale ?? 1).toFixed(1);
+        document.body.style.background = s.bgColor ?? '#ffffff';
+        Object.assign(cubeColors,    s.cubeColors    || {});
+        Object.assign(cubeTexts,     s.cubeTexts     || {});
+        Object.assign(cubeFaces,     s.cubeFaces     || {});
+        // cubePositions values are arrays, need deep copy
+        Object.entries(s.cubePositions || {}).forEach(([k,v]) => cubePositions[k] = [...v]);
+        return true;
+      } catch { return false; }
+    }
+
+    // Wrap renderScene to auto-save and re-apply selection after every render
+    const _renderScene = renderScene;
+    renderScene = function() {
+      _renderScene();
+      saveSettings();
+      if (selectedCube !== null) {
+        document.querySelectorAll('[data-cube-index]').forEach(g => {
+          g.style.opacity = (parseInt(g.getAttribute('data-cube-index')) === selectedCube) ? '1' : '0.4';
+        });
+      }
+    };
+
+    function render() {
+      const count = Math.min(64, Math.max(1, parseInt(document.getElementById('cubeCount').value) || 1));
+      updateColorList(count);
+      renderScene();
+    }
+
+    document.getElementById('stackDir').addEventListener('change', renderScene);
+
+    document.getElementById('customMode').addEventListener('change', e => {
+      const count = Math.min(64, Math.max(1, parseInt(document.getElementById('cubeCount').value) || 1));
+      if (e.target.checked) {
+        // Pre-populate custom positions from current auto layout
+        const autoPosns = generatePositions(count);
+        autoPosns.forEach((pos, i) => { cubePositions[i] = [...pos]; });
+      }
+      // Show/hide pos rows
+      document.querySelectorAll('.cube-pos-row').forEach(r => {
+        r.style.display = e.target.checked ? 'flex' : 'none';
+      });
+      // Update pos inputs to reflect cubePositions
+      document.querySelectorAll('.cube-pos-row').forEach((r, i) => {
+        const inputs = r.querySelectorAll('input');
+        if (cubePositions[i]) inputs.forEach((inp, ai) => inp.value = cubePositions[i][ai]);
+      });
+      renderScene();
+    });
+
+    document.getElementById('cubeCount').addEventListener('input', render);
+    document.getElementById('strokeWidth').addEventListener('input', e => {
+      document.getElementById('strokeWidthValue').textContent = e.target.value;
+      renderScene();
+    });
+    document.getElementById('strokeColor').addEventListener('input', renderScene);
+    document.getElementById('cornerRadius').addEventListener('input', e => {
+      document.getElementById('cornerRadiusValue').textContent = e.target.value;
+      renderScene();
+    });
+    document.getElementById('flatShading').addEventListener('change', renderScene);
+    document.getElementById('showShadow').addEventListener('change', renderScene);
+    document.getElementById('autoLabel').addEventListener('change', e => {
+      const list = document.getElementById('color-list');
+      Array.from(list.children).forEach((row, i) => {
+        if (e.target.checked) cubeTexts[i] = String(i + 1);
+        const t = row.querySelector('input[type="text"]');
+        if (t) t.value = cubeTexts[i] || '';
+      });
+      renderScene();
+    });
+    document.getElementById('gapSlider').addEventListener('input', e => {
+      document.getElementById('gapValue').textContent = parseFloat(e.target.value).toFixed(2);
+      renderScene();
+    });
+    document.getElementById('fontSlider').addEventListener('input', e => {
+      document.getElementById('fontValue').textContent = e.target.value;
+      renderScene();
+    });
+    document.getElementById('scaleSlider').addEventListener('input', e => {
+      document.getElementById('scaleValue').textContent = parseFloat(e.target.value).toFixed(1);
+      renderScene();
+    });
+    document.getElementById('bgColor').addEventListener('input', e => {
+      document.body.style.background = e.target.value;
+      saveSettings();
+    });
+
+    document.getElementById('saveJson').addEventListener('click', () => {
+      const settings = {
+        count:       document.getElementById('cubeCount').value,
+        gap:         document.getElementById('gapSlider').value,
+        font:        document.getElementById('fontSlider').value,
+        scale:       document.getElementById('scaleSlider').value,
+        bgColor:     document.getElementById('bgColor').value,
+        autoLabel:    document.getElementById('autoLabel').checked,
+        flatShading:  document.getElementById('flatShading').checked,
+        showShadow:   document.getElementById('showShadow').checked,
+        strokeWidth:  document.getElementById('strokeWidth').value,
+        strokeColor:  document.getElementById('strokeColor').value,
+        cornerRadius: document.getElementById('cornerRadius').value,
+        stackDir:     document.getElementById('stackDir').value,
+        customMode:   document.getElementById('customMode').checked,
+        cubeColors:    { ...cubeColors    },
+        cubeTexts:     { ...cubeTexts     },
+        cubeFaces:     { ...cubeFaces     },
+        cubePositions: { ...cubePositions },
+      };
+      const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'isocube.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('loadJson').addEventListener('click', () => {
+      document.getElementById('loadJsonFile').click();
+    });
+
+    document.getElementById('loadJsonFile').addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+        try {
+          const s = JSON.parse(evt.target.result);
+          document.getElementById('cubeCount').value   = s.count       ?? 1;
+          document.getElementById('gapSlider').value   = s.gap         ?? 0;
+          document.getElementById('fontSlider').value  = s.font        ?? 12;
+          document.getElementById('scaleSlider').value = s.scale       ?? 1;
+          document.getElementById('bgColor').value     = s.bgColor     ?? '#ffffff';
+          document.getElementById('autoLabel').checked   = s.autoLabel   ?? false;
+          document.getElementById('flatShading').checked    = s.flatShading  ?? false;
+          document.getElementById('showShadow').checked     = s.showShadow   ?? false;
+          document.getElementById('strokeWidth').value      = s.strokeWidth  ?? 1.5;
+          document.getElementById('strokeColor').value      = s.strokeColor  ?? '#000000';
+          document.getElementById('cornerRadius').value     = s.cornerRadius ?? 0;
+          document.getElementById('strokeWidthValue').textContent  = s.strokeWidth  ?? 1.5;
+          document.getElementById('cornerRadiusValue').textContent = s.cornerRadius ?? 0;
+          document.getElementById('stackDir').value         = s.stackDir     ?? 'auto';
+          document.getElementById('customMode').checked     = s.customMode   ?? false;
+          document.getElementById('gapValue').textContent   = parseFloat(s.gap   ?? 0).toFixed(2);
+          document.getElementById('fontValue').textContent  = s.font  ?? 12;
+          document.getElementById('scaleValue').textContent = parseFloat(s.scale ?? 1).toFixed(1);
+          document.body.style.background = s.bgColor ?? '#ffffff';
+          Object.keys(cubeColors).forEach(k    => delete cubeColors[k]);
+          Object.keys(cubeTexts).forEach(k     => delete cubeTexts[k]);
+          Object.keys(cubeFaces).forEach(k     => delete cubeFaces[k]);
+          Object.keys(cubePositions).forEach(k => delete cubePositions[k]);
+          Object.assign(cubeColors, s.cubeColors || {});
+          Object.assign(cubeTexts,  s.cubeTexts  || {});
+          Object.assign(cubeFaces,  s.cubeFaces  || {});
+          Object.entries(s.cubePositions || {}).forEach(([k,v]) => cubePositions[k] = [...v]);
+          render();
+        } catch {
+          alert('Invalid JSON file.');
+        }
+        // Reset so the same file can be loaded again if needed
+        e.target.value = '';
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById('deselectAll').addEventListener('click', clearSelection);
+
+    document.getElementById('exportSvg').addEventListener('click', () => {
+      const svg = document.getElementById('scene');
+      const serializer = new XMLSerializer();
+      const svgStr = '<?xml version="1.0" encoding="UTF-8"?>\n' + serializer.serializeToString(svg);
+      const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'isocube.svg';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('clearStorage').addEventListener('click', () => {
+      if (confirm('Clear all saved settings and reset to defaults?')) {
+        localStorage.removeItem(STORAGE_KEY);
+        // Reset state
+        Object.keys(cubeColors).forEach(k    => delete cubeColors[k]);
+        Object.keys(cubeTexts).forEach(k     => delete cubeTexts[k]);
+        Object.keys(cubeFaces).forEach(k     => delete cubeFaces[k]);
+        Object.keys(cubePositions).forEach(k => delete cubePositions[k]);
+        document.getElementById('cubeCount').value   = 1;
+        document.getElementById('gapSlider').value   = 0;
+        document.getElementById('fontSlider').value  = 12;
+        document.getElementById('scaleSlider').value = 1;
+        document.getElementById('bgColor').value     = '#ffffff';
+        document.getElementById('autoLabel').checked   = false;
+        document.getElementById('flatShading').checked    = false;
+        document.getElementById('showShadow').checked     = false;
+        document.getElementById('strokeWidth').value      = 1.5;
+        document.getElementById('strokeColor').value      = '#000000';
+        document.getElementById('cornerRadius').value     = 0;
+        document.getElementById('strokeWidthValue').textContent  = '1.5';
+        document.getElementById('cornerRadiusValue').textContent = '0';
+        document.getElementById('stackDir').value         = 'auto';
+        document.getElementById('customMode').checked     = false;
+        document.getElementById('gapValue').textContent   = '0.00';
+        document.getElementById('fontValue').textContent  = '12';
+        document.getElementById('scaleValue').textContent = '1.0';
+        document.body.style.background = '#ffffff';
+        render();
+      }
+    });
+
+    loadSettings();
+    render();
+  </script>
+</body>
+</html>
