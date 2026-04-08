@@ -538,6 +538,14 @@
       ];
     }
 
+    function innerEdgeColor(hex) {
+      const [h, s, l] = rgbToHsl(hexToRgb(hex));
+      // Dark/black cubes: lighten so the edge is visible
+      // Light/medium cubes: darken slightly
+      if (l < 0.3) return rgbToHex(hslToRgb([h, s, Math.min(1, l + 0.2)]));
+      return rgbToHex(hslToRgb([h, s, Math.max(0, l - 0.2)]));
+    }
+
     function lightenColor(hex) {
       const [h, s, l] = rgbToHsl(hexToRgb(hex));
       if (l >= 0.97) return '#cccccc'; // white → light gray
@@ -719,13 +727,15 @@
       });
 
       if (outlineMode && strokeW > 0) {
-        // Inner edges: thin strokes matching the darker adjacent face color
+        // Inner edges: slightly darker (or lighter for dark cubes) than the cube color
         const innerW = Math.max(0.5, strokeW * 0.5);
+        const innerCol = innerEdgeColor(colors.top);
         [
-          { from: pg(0,1,1), to: pg(1,1,1), color: colors.left  }, // top ↔ left ridge
-          { from: pg(1,0,1), to: pg(1,1,1), color: colors.right }, // top ↔ right ridge
-          { from: pg(1,1,0), to: pg(1,1,1), color: colors.right }, // left ↔ right front edge
-        ].forEach(({ from, to, color }) => {
+          { from: pg(0,1,1), to: pg(1,1,1) }, // top ↔ left ridge
+          { from: pg(1,0,1), to: pg(1,1,1) }, // top ↔ right ridge
+          { from: pg(1,1,0), to: pg(1,1,1) }, // left ↔ right front edge
+        ].forEach(({ from, to }) => {
+          const color = innerCol;
           const [fx, fy] = from.split(',').map(Number);
           const [tx, ty] = to.split(',').map(Number);
           const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
