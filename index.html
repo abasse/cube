@@ -540,10 +540,9 @@
 
     function innerEdgeColor(hex) {
       const [h, s, l] = rgbToHsl(hexToRgb(hex));
-      // Dark/black cubes: lighten so the edge is visible
-      // Light/medium cubes: darken slightly
-      if (l < 0.3) return rgbToHex(hslToRgb([h, s, Math.min(1, l + 0.2)]));
-      return rgbToHex(hslToRgb([h, s, Math.max(0, l - 0.2)]));
+      // Threshold at 0.4 so dark reds/navies also get lightened
+      if (l < 0.4) return rgbToHex(hslToRgb([h, s, Math.min(1, l + 0.3)]));
+      return rgbToHex(hslToRgb([h, s, Math.max(0, l - 0.3)]));
     }
 
     function lightenColor(hex) {
@@ -728,7 +727,7 @@
 
       if (outlineMode && strokeW > 0) {
         // Inner edges: slightly darker (or lighter for dark cubes) than the cube color
-        const innerW = Math.max(0.5, strokeW * 0.5);
+        const innerW = Math.max(0.75, strokeW * 0.6);
         const innerCol = innerEdgeColor(colors.top);
         [
           { from: pg(0,1,1), to: pg(1,1,1) }, // top ↔ left ridge
