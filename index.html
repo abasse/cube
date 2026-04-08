@@ -418,6 +418,13 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div class="toggle-wrap">
+          <label for="outlineStroke">Outline</label>
+          <label class="toggle">
+            <input type="checkbox" id="outlineStroke">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </div>
 
       <!-- Text section -->
@@ -691,6 +698,8 @@
       cubeGroup.addEventListener('click', () => selectCube(cubeIndex));
       svg.appendChild(cubeGroup);
 
+      const outlineMode = document.getElementById('outlineStroke').checked;
+
       [
         { pts: leftPts,  fill: colors.left  },
         { pts: rightPts, fill: colors.right },
@@ -699,7 +708,7 @@
         const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         el.setAttribute('d', roundedParallelogram(pts));
         el.setAttribute('fill', fill);
-        if (strokeW > 0) {
+        if (!outlineMode && strokeW > 0) {
           el.setAttribute('stroke', strokeCol);
           el.setAttribute('stroke-width', strokeW);
         } else {
@@ -708,6 +717,36 @@
         el.setAttribute('stroke-linejoin', 'round');
         cubeGroup.appendChild(el);
       });
+
+      if (outlineMode && strokeW > 0) {
+        // Inner edges: thin strokes matching the darker adjacent face color
+        const innerW = Math.max(0.5, strokeW * 0.5);
+        [
+          { from: pg(0,1,1), to: pg(1,1,1), color: colors.left  }, // top ↔ left ridge
+          { from: pg(1,0,1), to: pg(1,1,1), color: colors.right }, // top ↔ right ridge
+          { from: pg(1,1,0), to: pg(1,1,1), color: colors.right }, // left ↔ right front edge
+        ].forEach(({ from, to, color }) => {
+          const [fx, fy] = from.split(',').map(Number);
+          const [tx, ty] = to.split(',').map(Number);
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', fx + ox); line.setAttribute('y1', fy + oy);
+          line.setAttribute('x2', tx + ox); line.setAttribute('y2', ty + oy);
+          line.setAttribute('stroke', color);
+          line.setAttribute('stroke-width', innerW);
+          line.setAttribute('stroke-linecap', 'round');
+          cubeGroup.appendChild(line);
+        });
+
+        // Outer silhouette hexagon: thick black stroke
+        const outerPts = [pg(0,0,1), pg(1,0,1), pg(1,0,0), pg(1,1,0), pg(0,1,0), pg(0,1,1)];
+        const outerEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        outerEl.setAttribute('d', roundedParallelogram(outerPts));
+        outerEl.setAttribute('fill', 'none');
+        outerEl.setAttribute('stroke', '#000000');
+        outerEl.setAttribute('stroke-width', strokeW);
+        outerEl.setAttribute('stroke-linejoin', 'round');
+        cubeGroup.appendChild(outerEl);
+      }
 
       if (text && text.trim()) {
         const lines = text.trim().split('_').map(l => l.trim()).filter(l => l.length > 0);
@@ -984,6 +1023,7 @@
         autoLabel:       document.getElementById('autoLabel').checked,
         flatShading:     document.getElementById('flatShading').checked,
         showShadow:      document.getElementById('showShadow').checked,
+        outlineStroke:   document.getElementById('outlineStroke').checked,
         strokeWidth:     document.getElementById('strokeWidth').value,
         strokeColor:     document.getElementById('strokeColor').value,
         strokeMatchCube: document.getElementById('strokeMatchCube').checked,
@@ -1011,6 +1051,7 @@
         document.getElementById('autoLabel').checked   = s.autoLabel   ?? false;
         document.getElementById('flatShading').checked    = s.flatShading  ?? false;
         document.getElementById('showShadow').checked     = s.showShadow   ?? false;
+        document.getElementById('outlineStroke').checked  = s.outlineStroke ?? false;
         document.getElementById('strokeWidth').value           = s.strokeWidth      ?? 1.5;
         document.getElementById('strokeColor').value           = s.strokeColor      ?? '#000000';
         document.getElementById('strokeMatchCube').checked     = s.strokeMatchCube  ?? false;
@@ -1088,6 +1129,7 @@
     });
     document.getElementById('flatShading').addEventListener('change', renderScene);
     document.getElementById('showShadow').addEventListener('change', renderScene);
+    document.getElementById('outlineStroke').addEventListener('change', renderScene);
     document.getElementById('autoLabel').addEventListener('change', e => {
       const list = document.getElementById('color-list');
       Array.from(list.children).forEach((row, i) => {
@@ -1124,6 +1166,7 @@
         autoLabel:       document.getElementById('autoLabel').checked,
         flatShading:     document.getElementById('flatShading').checked,
         showShadow:      document.getElementById('showShadow').checked,
+        outlineStroke:   document.getElementById('outlineStroke').checked,
         strokeWidth:     document.getElementById('strokeWidth').value,
         strokeColor:     document.getElementById('strokeColor').value,
         strokeMatchCube: document.getElementById('strokeMatchCube').checked,
@@ -1163,6 +1206,7 @@
           document.getElementById('autoLabel').checked   = s.autoLabel   ?? false;
           document.getElementById('flatShading').checked    = s.flatShading  ?? false;
           document.getElementById('showShadow').checked     = s.showShadow   ?? false;
+          document.getElementById('outlineStroke').checked  = s.outlineStroke ?? false;
           document.getElementById('strokeWidth').value          = s.strokeWidth      ?? 1.5;
           document.getElementById('strokeColor').value          = s.strokeColor      ?? '#000000';
           const _mc = s.strokeMatchCube ?? false;
