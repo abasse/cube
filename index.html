@@ -384,9 +384,16 @@
           <input type="range" id="strokeWidth" min="0" max="6" step="0.5" value="1.5">
           <span class="val" id="strokeWidthValue">1.5</span>
         </div>
-        <div class="field">
+        <div class="field" id="strokeColorField">
           <label for="strokeColor">Stroke color</label>
           <input type="color" id="strokeColor" value="#000000">
+        </div>
+        <div class="toggle-wrap">
+          <label for="strokeMatchCube">Stroke follows cube</label>
+          <label class="toggle">
+            <input type="checkbox" id="strokeMatchCube">
+            <span class="toggle-slider"></span>
+          </label>
         </div>
         <div class="field">
           <label for="cornerRadius">Rounded</label>
@@ -523,6 +530,12 @@
       ];
     }
 
+    function lightenColor(hex) {
+      const [h, s, l] = rgbToHsl(hexToRgb(hex));
+      if (l >= 0.97) return '#cccccc'; // white → light gray
+      return rgbToHex(hslToRgb([h, s, Math.min(0.95, l + 0.15)]));
+    }
+
     function deriveFaceColors(topHex) {
       const flat = document.getElementById('flatShading').checked;
       if (flat) return { top: topHex, left: topHex, right: topHex };
@@ -635,7 +648,9 @@
       const rightPts= [pg(1,0,0), pg(1,1,0), pg(1,1,1), pg(1,0,1)];
 
       const strokeW     = parseFloat(document.getElementById('strokeWidth').value);
-      const strokeCol   = document.getElementById('strokeColor').value;
+      const strokeCol   = document.getElementById('strokeMatchCube').checked
+        ? lightenColor(colors.top)
+        : document.getElementById('strokeColor').value;
       const cornerR     = parseInt(document.getElementById('cornerRadius').value);
 
       // Build a rounded parallelogram path from 4 points
@@ -965,14 +980,15 @@
         font:      document.getElementById('fontSlider').value,
         scale:     document.getElementById('scaleSlider').value,
         bgColor:   document.getElementById('bgColor').value,
-        autoLabel:    document.getElementById('autoLabel').checked,
-        flatShading:  document.getElementById('flatShading').checked,
-        showShadow:   document.getElementById('showShadow').checked,
-        strokeWidth:  document.getElementById('strokeWidth').value,
-        strokeColor:  document.getElementById('strokeColor').value,
-        cornerRadius: document.getElementById('cornerRadius').value,
-        stackDir:     document.getElementById('stackDir').value,
-        customMode:   document.getElementById('customMode').checked,
+        autoLabel:       document.getElementById('autoLabel').checked,
+        flatShading:     document.getElementById('flatShading').checked,
+        showShadow:      document.getElementById('showShadow').checked,
+        strokeWidth:     document.getElementById('strokeWidth').value,
+        strokeColor:     document.getElementById('strokeColor').value,
+        strokeMatchCube: document.getElementById('strokeMatchCube').checked,
+        cornerRadius:    document.getElementById('cornerRadius').value,
+        stackDir:        document.getElementById('stackDir').value,
+        customMode:      document.getElementById('customMode').checked,
         cubeColors:     { ...cubeColors    },
         cubeTexts:      { ...cubeTexts     },
         cubeFaces:      { ...cubeFaces     },
@@ -994,9 +1010,10 @@
         document.getElementById('autoLabel').checked   = s.autoLabel   ?? false;
         document.getElementById('flatShading').checked    = s.flatShading  ?? false;
         document.getElementById('showShadow').checked     = s.showShadow   ?? false;
-        document.getElementById('strokeWidth').value      = s.strokeWidth  ?? 1.5;
-        document.getElementById('strokeColor').value      = s.strokeColor  ?? '#000000';
-        document.getElementById('cornerRadius').value     = s.cornerRadius ?? 0;
+        document.getElementById('strokeWidth').value           = s.strokeWidth      ?? 1.5;
+        document.getElementById('strokeColor').value           = s.strokeColor      ?? '#000000';
+        document.getElementById('strokeMatchCube').checked     = s.strokeMatchCube  ?? false;
+        document.getElementById('cornerRadius').value          = s.cornerRadius     ?? 0;
         document.getElementById('strokeWidthValue').textContent  = s.strokeWidth  ?? 1.5;
         document.getElementById('cornerRadiusValue').textContent = s.cornerRadius ?? 0;
         document.getElementById('stackDir').value         = s.stackDir     ?? 'auto';
@@ -1059,6 +1076,11 @@
       renderScene();
     });
     document.getElementById('strokeColor').addEventListener('input', renderScene);
+    document.getElementById('strokeMatchCube').addEventListener('change', e => {
+      document.getElementById('strokeColorField').style.opacity = e.target.checked ? '0.4' : '';
+      document.getElementById('strokeColor').disabled = e.target.checked;
+      renderScene();
+    });
     document.getElementById('cornerRadius').addEventListener('input', e => {
       document.getElementById('cornerRadiusValue').textContent = e.target.value;
       renderScene();
@@ -1098,14 +1120,15 @@
         font:        document.getElementById('fontSlider').value,
         scale:       document.getElementById('scaleSlider').value,
         bgColor:     document.getElementById('bgColor').value,
-        autoLabel:    document.getElementById('autoLabel').checked,
-        flatShading:  document.getElementById('flatShading').checked,
-        showShadow:   document.getElementById('showShadow').checked,
-        strokeWidth:  document.getElementById('strokeWidth').value,
-        strokeColor:  document.getElementById('strokeColor').value,
-        cornerRadius: document.getElementById('cornerRadius').value,
-        stackDir:     document.getElementById('stackDir').value,
-        customMode:   document.getElementById('customMode').checked,
+        autoLabel:       document.getElementById('autoLabel').checked,
+        flatShading:     document.getElementById('flatShading').checked,
+        showShadow:      document.getElementById('showShadow').checked,
+        strokeWidth:     document.getElementById('strokeWidth').value,
+        strokeColor:     document.getElementById('strokeColor').value,
+        strokeMatchCube: document.getElementById('strokeMatchCube').checked,
+        cornerRadius:    document.getElementById('cornerRadius').value,
+        stackDir:        document.getElementById('stackDir').value,
+        customMode:      document.getElementById('customMode').checked,
         cubeColors:    { ...cubeColors    },
         cubeTexts:     { ...cubeTexts     },
         cubeFaces:     { ...cubeFaces     },
@@ -1139,9 +1162,13 @@
           document.getElementById('autoLabel').checked   = s.autoLabel   ?? false;
           document.getElementById('flatShading').checked    = s.flatShading  ?? false;
           document.getElementById('showShadow').checked     = s.showShadow   ?? false;
-          document.getElementById('strokeWidth').value      = s.strokeWidth  ?? 1.5;
-          document.getElementById('strokeColor').value      = s.strokeColor  ?? '#000000';
-          document.getElementById('cornerRadius').value     = s.cornerRadius ?? 0;
+          document.getElementById('strokeWidth').value          = s.strokeWidth      ?? 1.5;
+          document.getElementById('strokeColor').value          = s.strokeColor      ?? '#000000';
+          const _mc = s.strokeMatchCube ?? false;
+          document.getElementById('strokeMatchCube').checked    = _mc;
+          document.getElementById('strokeColorField').style.opacity = _mc ? '0.4' : '';
+          document.getElementById('strokeColor').disabled       = _mc;
+          document.getElementById('cornerRadius').value         = s.cornerRadius     ?? 0;
           document.getElementById('strokeWidthValue').textContent  = s.strokeWidth  ?? 1.5;
           document.getElementById('cornerRadiusValue').textContent = s.cornerRadius ?? 0;
           document.getElementById('stackDir').value         = s.stackDir     ?? 'auto';
@@ -1215,6 +1242,12 @@
     });
 
     loadSettings();
+    // Sync stroke color picker disabled state after loading
+    const _matchCube = document.getElementById('strokeMatchCube');
+    if (_matchCube.checked) {
+      document.getElementById('strokeColorField').style.opacity = '0.4';
+      document.getElementById('strokeColor').disabled = true;
+    }
     render();
   </script>
 </body>
