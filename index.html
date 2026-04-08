@@ -445,10 +445,11 @@
       </div>
       <div class="btn-group two">
         <button id="exportSvg" class="action-btn primary">Export SVG</button>
-        <button id="deselectAll" class="action-btn">Deselect all</button>
+        <button id="copySvg" class="action-btn">Copy SVG</button>
       </div>
-      <div class="btn-group">
-        <button id="clearStorage" class="action-btn danger" style="flex:1;">Clear settings</button>
+      <div class="btn-group two">
+        <button id="deselectAll" class="action-btn">Deselect all</button>
+        <button id="clearStorage" class="action-btn danger">Clear settings</button>
       </div>
 
     </div>
@@ -1208,6 +1209,18 @@
       a.download = 'isocube.svg';
       a.click();
       URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('copySvg').addEventListener('click', () => {
+      const svg = document.getElementById('scene');
+      const serializer = new XMLSerializer();
+      const svgStr = '<?xml version="1.0" encoding="UTF-8"?>\n' + serializer.serializeToString(svg);
+      navigator.clipboard.writeText(svgStr).then(() => {
+        const btn = document.getElementById('copySvg');
+        const orig = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
     });
 
     document.getElementById('clearStorage').addEventListener('click', () => {
