@@ -232,6 +232,12 @@
       transition: background 0.12s;
     }
     .palette-row:hover { background: #ebebeb; }
+    .palette-row.active {
+      background: #e8f0fe;
+      border-left: 3px solid #3367d6;
+      padding-left: 3px;
+    }
+    .palette-row.active .palette-name { color: #3367d6; font-weight: 600; }
     .palette-swatches {
       display: flex;
       gap: 3px;
@@ -570,6 +576,7 @@
   </div>
 
   <svg id="scene" xmlns="http://www.w3.org/2000/svg"></svg>
+  <datalist id="palette-colors"></datalist>
 
   <script>
     const S = 60;
@@ -1075,7 +1082,12 @@
       const colorInput = document.createElement('input');
       colorInput.type = 'color';
       colorInput.value = cubeColors[i];
-      colorInput.addEventListener('input', e => { cubeColors[i] = e.target.value; renderScene(); });
+      colorInput.setAttribute('list', 'palette-colors');
+      colorInput.addEventListener('input', e => {
+        cubeColors[i] = e.target.value;
+        setActivePalette(-1); // manual edit clears palette selection
+        renderScene();
+      });
 
       const removeBtn = document.createElement('button');
       removeBtn.className = 'cube-remove-btn';
@@ -1841,9 +1853,27 @@
       { name: 'Funky',      colors: ['#cc2200','#7a1010','#1a1a1a','#b8b8b8','#2e8b3a','#2244bb'] },
     ];
 
+    let _activePaletteIdx = -1;
+    const _paletteRows = [];
+
+    function setActivePalette(idx) {
+      _activePaletteIdx = idx;
+      _paletteRows.forEach((r, i) => r.classList.toggle('active', i === idx));
+      // Update datalist to match active palette (or clear if none)
+      const dl = document.getElementById('palette-colors');
+      dl.innerHTML = '';
+      if (idx >= 0) {
+        PALETTES[idx].colors.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c;
+          dl.appendChild(opt);
+        });
+      }
+    }
+
     (function buildPaletteUI() {
       const grid = document.getElementById('palette-grid');
-      PALETTES.forEach(palette => {
+      PALETTES.forEach((palette, pIdx) => {
         const row = document.createElement('div');
         row.className = 'palette-row';
         row.title = `Apply "${palette.name}" palette`;
@@ -1870,9 +1900,11 @@
           for (let i = 0; i < count; i++) {
             cubeColors[i] = cols[i % cols.length];
           }
+          setActivePalette(pIdx);
           render();
         });
 
+        _paletteRows.push(row);
         grid.appendChild(row);
       });
     })();
