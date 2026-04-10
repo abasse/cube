@@ -216,6 +216,19 @@
       flex-shrink: 0;
     }
 
+    /* ── Action bar (always visible) ── */
+    #action-bar {
+      flex-shrink: 0;
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      padding-bottom: 2px;
+    }
+    #action-bar .btn-group {
+      border-bottom: none;
+      padding-top: 6px;
+      padding-bottom: 2px;
+    }
+
     /* ── Action buttons ── */
     .btn-group {
       display: flex;
@@ -480,6 +493,23 @@
   <div id="sidebar">
     <div id="sidebar-title">Isometric Cube Builder</div>
 
+    <!-- Actions (always visible above tabs) -->
+    <div id="action-bar">
+      <div class="btn-group two">
+        <button id="saveJson" class="action-btn">Save JSON</button>
+        <button id="loadJson" class="action-btn">Load JSON</button>
+        <input type="file" id="loadJsonFile" accept=".json" style="display:none;">
+      </div>
+      <div class="btn-group two">
+        <button id="exportSvg" class="action-btn primary">Export SVG</button>
+        <button id="copySvg" class="action-btn">Copy Image</button>
+      </div>
+      <div class="btn-group two">
+        <button id="deselectAll" class="action-btn">Deselect all</button>
+        <button id="clearStorage" class="action-btn danger">Clear settings</button>
+      </div>
+    </div>
+
     <!-- Tab bar -->
     <div id="tab-bar">
       <button class="tab-btn active" data-tab="cubes">Cubes</button>
@@ -603,21 +633,6 @@
       <div class="section">
         <div class="section-title">Color Palettes</div>
         <div id="palette-grid"></div>
-      </div>
-
-      <!-- Actions -->
-      <div class="btn-group two">
-        <button id="saveJson" class="action-btn">Save JSON</button>
-        <button id="loadJson" class="action-btn">Load JSON</button>
-        <input type="file" id="loadJsonFile" accept=".json" style="display:none;">
-      </div>
-      <div class="btn-group two">
-        <button id="exportSvg" class="action-btn primary">Export SVG</button>
-        <button id="copySvg" class="action-btn">Copy Image</button>
-      </div>
-      <div class="btn-group two">
-        <button id="deselectAll" class="action-btn">Deselect all</button>
-        <button id="clearStorage" class="action-btn danger">Clear settings</button>
       </div>
 
     </div>
