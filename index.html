@@ -1085,7 +1085,11 @@
       colorInput.setAttribute('list', 'palette-colors');
       colorInput.addEventListener('input', e => {
         cubeColors[i] = e.target.value;
-        setActivePalette(-1); // manual edit clears palette selection
+        // Only clear the palette indicator when the chosen color is not part of it
+        if (_activePaletteIdx >= 0 &&
+            !PALETTES[_activePaletteIdx].colors.includes(e.target.value)) {
+          setActivePalette(-1);
+        }
         renderScene();
       });
 
