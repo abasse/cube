@@ -216,6 +216,43 @@
     }
     button.action-btn.danger:hover { background: #fdf0f0; border-color: #c0392b; }
 
+    /* ── Palette grid ── */
+    #palette-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .palette-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      border-radius: 5px;
+      padding: 4px 6px;
+      transition: background 0.12s;
+    }
+    .palette-row:hover { background: #ebebeb; }
+    .palette-swatches {
+      display: flex;
+      gap: 3px;
+      flex: 1;
+    }
+    .palette-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      border: 1px solid rgba(0,0,0,0.12);
+      flex-shrink: 0;
+    }
+    .palette-name {
+      font-size: 11px;
+      color: #555;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
     /* ── Cube list ── */
     #color-list {
       flex: 1;
@@ -507,6 +544,12 @@
         </div>
       </div>
 
+      <!-- Palette section -->
+      <div class="section">
+        <div class="section-title">Color Palettes</div>
+        <div id="palette-grid"></div>
+      </div>
+
       <!-- Actions section -->
       <div class="btn-group two">
         <button id="saveJson" class="action-btn">Save JSON</button>
@@ -533,13 +576,24 @@
     const DX = S * Math.sqrt(3) / 2;
     const DY = S / 2;
 
-    const cubeColors     = {};
-    const cubeTexts      = {};
-    const cubeFaces      = {};
-    const cubePositions  = {}; // custom mode: {i: [gx,gy,gz]}
-    const cubeIcons      = {}; // SVG string per cube
-    const cubeIconFaces  = {}; // face placement: left/right/top/all
-    const cubeIconColors = {}; // stroke color for icon
+    const cubeColors      = {};
+    const cubeTexts       = {};
+    const cubeFaces       = {};
+    const cubePositions   = {}; // custom mode: {i: [gx,gy,gz]}
+    const cubeHidden      = {}; // visibility toggle
+    const cubeIcons       = {}; // SVG string per cube
+    const cubeIconFaces   = {}; // (legacy, unused – face comes from cubeFaces)
+    const cubeIconColors  = {}; // stroke color for icon
+    const cubeIconFills   = {}; // fill color for icon ('' = none)
+    const cubeIconScale   = {}; // size multiplier (default 1.0)
+    const cubeIconOffsetX = {}; // horizontal offset, fraction of face width
+    const cubeIconOffsetY = {}; // vertical offset, fraction of face height
+
+    // ── Undo / Redo ───────────────────────────────────────────────
+    const _history = [];
+    let   _histIdx  = -1;
+    let   _undoing  = false;
+    let   _histTimer = null;
 
     function project(gx, gy, gz) {
       return {
@@ -711,7 +765,7 @@
 
     // Places an SVG icon on a parallelogram face, correctly skewed to match the perspective.
     // origin, rightPt, upPt are the same three screen-space points used by drawTextOnFace.
-    function drawIconOnFace(svg, iconSvgStr, iconColor, origin, rightPt, upPt) {
+    function drawIconOnFace(svg, iconSvgStr, iconColor, iconFill, userScale, offsetX, offsetY, origin, rightPt, upPt) {
       // Parse the SVG string (accepts full <svg>…</svg> or bare inner elements)
       const parser = new DOMParser();
       let iconSvgEl;
@@ -745,8 +799,8 @@
       const cx = (rightPt.x + upPt.x) / 2;
       const cy = (rightPt.y + upPt.y) / 2;
 
-      // Scale icon to fill 68% of the smaller face dimension, preserving aspect ratio
-      const iconScale = 0.68 * Math.min(faceW / iconW, faceH / iconH);
+      // Scale: 68% base × user multiplier
+      const iconScale = 0.68 * Math.min(faceW / iconW, faceH / iconH) * (userScale || 1);
 
       // Build the perspective transform:
       //   local +x → face right axis (unit vector × scale)
@@ -755,9 +809,12 @@
       const b  =  (ry / faceW) * iconScale;
       const c  = -(ux / faceH) * iconScale;
       const d  = -(uy / faceH) * iconScale;
-      // Translate so the icon centre lands on the face centre
-      const te = cx - a * (iconW / 2) - c * (iconH / 2);
-      const tf = cy - b * (iconW / 2) - d * (iconH / 2);
+      // Offset in face-space → screen-space (fractions of face dimensions)
+      const ox2 = (offsetX || 0) * rx + (offsetY || 0) * (-ux);
+      const oy2 = (offsetX || 0) * ry + (offsetY || 0) * (-uy);
+      // Translate so the icon centre lands on the face centre + offset
+      const te = cx + ox2 - a * (iconW / 2) - c * (iconH / 2);
+      const tf = cy + oy2 - b * (iconW / 2) - d * (iconH / 2);
 
       // Outer group: applies perspective + position
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -768,6 +825,7 @@
       const inner = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       if (vbX !== 0 || vbY !== 0) inner.setAttribute('transform', `translate(${-vbX},${-vbY})`);
       inner.setAttribute('stroke', iconColor);
+      if (iconFill) inner.setAttribute('fill', iconFill);
 
       Array.from(iconSvgEl.childNodes).forEach(node => {
         if (node.nodeType === 1) inner.appendChild(document.importNode(node, true));
@@ -777,7 +835,7 @@
       svg.appendChild(g);
     }
 
-    function drawCube(gx, gy, gz, svg, ox, oy, colors, gap, text, textFace, cubeIndex, iconSvg, iconFace, iconColor) {
+    function drawCube(gx, gy, gz, svg, ox, oy, colors, gap, text, textFace, cubeIndex, iconSvg, iconFace, iconColor, iconFill, iconScale, iconOffX, iconOffY) {
       const g = gap;
 
       const vp = (lx, ly, lz) => {
@@ -894,9 +952,9 @@
       if (iconSvg && iconSvg.trim()) {
         // Icon takes priority over text; uses the same face selector
         const col = iconColor || '#000000';
-        const drawIconL = () => drawIconOnFace(cubeGroup, iconSvg, col, vp(0,1,0), vp(1,1,0), vp(0,1,1));
-        const drawIconR = () => drawIconOnFace(cubeGroup, iconSvg, col, vp(1,1,0), vp(1,0,0), vp(1,1,1));
-        const drawIconT = () => drawIconOnFace(cubeGroup, iconSvg, col, vp(0,1,1), vp(1,1,1), vp(0,0,1));
+        const drawIconL = () => drawIconOnFace(cubeGroup, iconSvg, col, iconFill, iconScale, iconOffX, iconOffY, vp(0,1,0), vp(1,1,0), vp(0,1,1));
+        const drawIconR = () => drawIconOnFace(cubeGroup, iconSvg, col, iconFill, iconScale, iconOffX, iconOffY, vp(1,1,0), vp(1,0,0), vp(1,1,1));
+        const drawIconT = () => drawIconOnFace(cubeGroup, iconSvg, col, iconFill, iconScale, iconOffX, iconOffY, vp(0,1,1), vp(1,1,1), vp(0,0,1));
 
         if      (textFace === 'left')  drawIconL();
         else if (textFace === 'right') drawIconR();
@@ -922,21 +980,31 @@
       if (count <= 1) return;
       // Shift all data down from idx
       for (let j = idx; j < count - 1; j++) {
-        cubeColors[j]     = cubeColors[j + 1];
-        cubeTexts[j]      = cubeTexts[j + 1];
-        cubeFaces[j]      = cubeFaces[j + 1];
-        cubePositions[j]  = cubePositions[j + 1];
-        cubeIcons[j]      = cubeIcons[j + 1];
-        cubeIconFaces[j]  = cubeIconFaces[j + 1];
-        cubeIconColors[j] = cubeIconColors[j + 1];
+        cubeColors[j]      = cubeColors[j + 1];
+        cubeTexts[j]       = cubeTexts[j + 1];
+        cubeFaces[j]       = cubeFaces[j + 1];
+        cubePositions[j]   = cubePositions[j + 1];
+        cubeHidden[j]      = cubeHidden[j + 1];
+        cubeIcons[j]       = cubeIcons[j + 1];
+        cubeIconFaces[j]   = cubeIconFaces[j + 1];
+        cubeIconColors[j]  = cubeIconColors[j + 1];
+        cubeIconFills[j]   = cubeIconFills[j + 1];
+        cubeIconScale[j]   = cubeIconScale[j + 1];
+        cubeIconOffsetX[j] = cubeIconOffsetX[j + 1];
+        cubeIconOffsetY[j] = cubeIconOffsetY[j + 1];
       }
       delete cubeColors[count - 1];
       delete cubeTexts[count - 1];
       delete cubeFaces[count - 1];
       delete cubePositions[count - 1];
+      delete cubeHidden[count - 1];
       delete cubeIcons[count - 1];
       delete cubeIconFaces[count - 1];
       delete cubeIconColors[count - 1];
+      delete cubeIconFills[count - 1];
+      delete cubeIconScale[count - 1];
+      delete cubeIconOffsetX[count - 1];
+      delete cubeIconOffsetY[count - 1];
       document.getElementById('cubeCount').value = count - 1;
       render();
     }
@@ -946,13 +1014,18 @@
       if (!cubeTexts[i])      cubeTexts[i]      = '';
       if (!cubeFaces[i])      cubeFaces[i]      = 'left';
       if (!cubePositions[i])  cubePositions[i]  = [i, 0, 0];
-      if (cubeIcons[i]      === undefined) cubeIcons[i]      = '';
-      if (cubeIconFaces[i]  === undefined) cubeIconFaces[i]  = 'left';
-      if (cubeIconColors[i] === undefined) cubeIconColors[i] = '#000000';
+      if (cubeHidden[i]      === undefined) cubeHidden[i]      = false;
+      if (cubeIcons[i]       === undefined) cubeIcons[i]       = '';
+      if (cubeIconColors[i]  === undefined) cubeIconColors[i]  = '#000000';
+      if (cubeIconFills[i]   === undefined) cubeIconFills[i]   = '';
+      if (cubeIconScale[i]   === undefined) cubeIconScale[i]   = 1;
+      if (cubeIconOffsetX[i] === undefined) cubeIconOffsetX[i] = 0;
+      if (cubeIconOffsetY[i] === undefined) cubeIconOffsetY[i] = 0;
 
       const row = document.createElement('div');
       row.className = 'cube-row';
       row.draggable = true;
+      if (cubeHidden[i]) row.style.opacity = '0.45';
       row.dataset.index = i;
 
       row.addEventListener('dragstart', e => {
@@ -972,13 +1045,17 @@
         const shiftSwap = (obj, a, b) => { const t = obj[a]; obj[a] = obj[b]; obj[b] = t; };
         const dir = fromIdx < toIdx ? 1 : -1;
         for (let j = fromIdx; j !== toIdx; j += dir) {
-          shiftSwap(cubeColors,     j, j + dir);
-          shiftSwap(cubeTexts,      j, j + dir);
-          shiftSwap(cubeFaces,      j, j + dir);
-          shiftSwap(cubePositions,  j, j + dir);
-          shiftSwap(cubeIcons,      j, j + dir);
-          shiftSwap(cubeIconFaces,  j, j + dir);
-          shiftSwap(cubeIconColors, j, j + dir);
+          shiftSwap(cubeColors,      j, j + dir);
+          shiftSwap(cubeTexts,       j, j + dir);
+          shiftSwap(cubeFaces,       j, j + dir);
+          shiftSwap(cubePositions,   j, j + dir);
+          shiftSwap(cubeHidden,      j, j + dir);
+          shiftSwap(cubeIcons,       j, j + dir);
+          shiftSwap(cubeIconColors,  j, j + dir);
+          shiftSwap(cubeIconFills,   j, j + dir);
+          shiftSwap(cubeIconScale,   j, j + dir);
+          shiftSwap(cubeIconOffsetX, j, j + dir);
+          shiftSwap(cubeIconOffsetY, j, j + dir);
         }
         render();
       });
@@ -1006,9 +1083,25 @@
       removeBtn.title = 'Remove cube';
       removeBtn.addEventListener('click', () => removeCube(i));
 
+      // Visibility toggle button
+      const visBtn = document.createElement('button');
+      visBtn.type = 'button';
+      visBtn.className = 'cube-remove-btn';
+      visBtn.title = 'Toggle visibility';
+      visBtn.textContent = cubeHidden[i] ? '👁' : '●';
+      visBtn.style.opacity = cubeHidden[i] ? '0.35' : '1';
+      visBtn.addEventListener('click', () => {
+        cubeHidden[i] = !cubeHidden[i];
+        visBtn.textContent = cubeHidden[i] ? '👁' : '●';
+        visBtn.style.opacity = cubeHidden[i] ? '0.35' : '1';
+        row.style.opacity = cubeHidden[i] ? '0.45' : '1';
+        renderScene();
+      });
+
       top.appendChild(handle);
       top.appendChild(lbl);
       top.appendChild(colorInput);
+      top.appendChild(visBtn);
       top.appendChild(removeBtn);
 
       const autoLabel = document.getElementById('autoLabel').checked;
@@ -1065,21 +1158,90 @@
         renderScene();
       });
 
-      // Icon stroke color picker
+      // Row 1: Stroke + Fill colors
       const iconColorInput = document.createElement('input');
       iconColorInput.type = 'color';
       iconColorInput.value = cubeIconColors[i];
       iconColorInput.addEventListener('input', e => { cubeIconColors[i] = e.target.value; renderScene(); });
 
+      const iconFillCheck = document.createElement('input');
+      iconFillCheck.type = 'checkbox';
+      iconFillCheck.style.accentColor = '#222';
+      iconFillCheck.checked = !!cubeIconFills[i];
+
+      const iconFillInput = document.createElement('input');
+      iconFillInput.type = 'color';
+      iconFillInput.value = cubeIconFills[i] || '#000000';
+      iconFillInput.disabled = !cubeIconFills[i];
+      iconFillInput.style.opacity = cubeIconFills[i] ? '1' : '0.35';
+      iconFillInput.addEventListener('input', e => { cubeIconFills[i] = e.target.value; renderScene(); });
+      iconFillCheck.addEventListener('change', e => {
+        const on = e.target.checked;
+        cubeIconFills[i] = on ? iconFillInput.value : '';
+        iconFillInput.disabled = !on;
+        iconFillInput.style.opacity = on ? '1' : '0.35';
+        renderScene();
+      });
+
       const iconControls = document.createElement('div');
       iconControls.className = 'cube-icon-controls';
       const strokeLbl = document.createElement('label');
       strokeLbl.textContent = 'Stroke';
+      const fillLbl = document.createElement('label');
+      fillLbl.textContent = 'Fill';
       iconControls.appendChild(strokeLbl);
       iconControls.appendChild(iconColorInput);
+      iconControls.appendChild(fillLbl);
+      iconControls.appendChild(iconFillCheck);
+      iconControls.appendChild(iconFillInput);
+
+      // Row 2: Size slider
+      const iconScaleRow = document.createElement('div');
+      iconScaleRow.className = 'cube-icon-controls';
+      const scaleLbl = document.createElement('label');
+      scaleLbl.textContent = 'Size';
+      const iconScaleVal = document.createElement('span');
+      iconScaleVal.style.cssText = 'font-size:10px;color:#888;min-width:26px;text-align:right;';
+      iconScaleVal.textContent = (cubeIconScale[i] ?? 1).toFixed(1) + '×';
+      const iconScaleSlider = document.createElement('input');
+      iconScaleSlider.type = 'range'; iconScaleSlider.min = 0.2; iconScaleSlider.max = 2;
+      iconScaleSlider.step = 0.1; iconScaleSlider.value = cubeIconScale[i] ?? 1;
+      iconScaleSlider.style.flex = '1';
+      iconScaleSlider.addEventListener('input', e => {
+        cubeIconScale[i] = parseFloat(e.target.value);
+        iconScaleVal.textContent = cubeIconScale[i].toFixed(1) + '×';
+        renderScene();
+      });
+      iconScaleRow.appendChild(scaleLbl);
+      iconScaleRow.appendChild(iconScaleSlider);
+      iconScaleRow.appendChild(iconScaleVal);
+
+      // Row 3: Offset X + Y
+      const iconOffRow = document.createElement('div');
+      iconOffRow.className = 'cube-icon-controls';
+      const mkOff = (label, obj, key, min, max) => {
+        const lbl2 = document.createElement('label');
+        lbl2.textContent = label;
+        const valSpan = document.createElement('span');
+        valSpan.style.cssText = 'font-size:10px;color:#888;min-width:30px;text-align:right;';
+        valSpan.textContent = (obj[key] ?? 0).toFixed(2);
+        const sl = document.createElement('input');
+        sl.type = 'range'; sl.min = min; sl.max = max; sl.step = 0.05;
+        sl.value = obj[key] ?? 0; sl.style.flex = '1';
+        sl.addEventListener('input', e => {
+          obj[key] = parseFloat(e.target.value);
+          valSpan.textContent = obj[key].toFixed(2);
+          renderScene();
+        });
+        return [lbl2, sl, valSpan];
+      };
+      mkOff('↔', cubeIconOffsetX, i, -0.5, 0.5).forEach(el => iconOffRow.appendChild(el));
+      mkOff('↕', cubeIconOffsetY, i, -0.5, 0.5).forEach(el => iconOffRow.appendChild(el));
 
       iconSection.appendChild(iconTextarea);
       iconSection.appendChild(iconControls);
+      iconSection.appendChild(iconScaleRow);
+      iconSection.appendChild(iconOffRow);
 
       row.appendChild(iconToggle);
       row.appendChild(iconSection);
@@ -1218,11 +1380,13 @@
       }
 
       sorted.forEach(({ pos: [gx, gy, gz], i }) => {
+        if (cubeHidden[i]) return; // skip hidden cubes
         const topHex  = cubeColors[i] || '#ffffff';
         const text    = cubeTexts[i]  || '';
         const face    = cubeFaces[i]  || 'left';
         drawCube(gx, gy, gz, g, ox, oy, deriveFaceColors(topHex), gap, text, face, i,
-          cubeIcons[i] || '', cubeIconFaces[i] || 'left', cubeIconColors[i] || '#000000');
+          cubeIcons[i] || '', cubeFaces[i] || 'left', cubeIconColors[i] || '#000000',
+          cubeIconFills[i] || '', cubeIconScale[i] ?? 1, cubeIconOffsetX[i] ?? 0, cubeIconOffsetY[i] ?? 0);
       });
     }
 
@@ -1245,13 +1409,18 @@
         cornerRadius:    document.getElementById('cornerRadius').value,
         stackDir:        document.getElementById('stackDir').value,
         customMode:      document.getElementById('customMode').checked,
-        cubeColors:      { ...cubeColors     },
-        cubeTexts:       { ...cubeTexts      },
-        cubeFaces:       { ...cubeFaces      },
-        cubePositions:   { ...cubePositions  },
-        cubeIcons:       { ...cubeIcons      },
-        cubeIconFaces:   { ...cubeIconFaces  },
-        cubeIconColors:  { ...cubeIconColors },
+        cubeColors:      { ...cubeColors      },
+        cubeTexts:       { ...cubeTexts       },
+        cubeFaces:       { ...cubeFaces       },
+        cubePositions:   Object.fromEntries(Object.entries(cubePositions).map(([k,v]) => [k,[...v]])),
+        cubeHidden:      { ...cubeHidden      },
+        cubeIcons:       { ...cubeIcons       },
+        cubeIconFaces:   { ...cubeIconFaces   },
+        cubeIconColors:  { ...cubeIconColors  },
+        cubeIconFills:   { ...cubeIconFills   },
+        cubeIconScale:   { ...cubeIconScale   },
+        cubeIconOffsetX: { ...cubeIconOffsetX },
+        cubeIconOffsetY: { ...cubeIconOffsetY },
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     }
@@ -1282,23 +1451,127 @@
         document.getElementById('fontValue').textContent  = s.font  ?? 12;
         document.getElementById('scaleValue').textContent = parseFloat(s.scale ?? 1).toFixed(1);
         document.body.style.background = s.bgColor ?? '#ffffff';
-        Object.assign(cubeColors,     s.cubeColors     || {});
-        Object.assign(cubeTexts,      s.cubeTexts      || {});
-        Object.assign(cubeFaces,      s.cubeFaces      || {});
-        // cubePositions values are arrays, need deep copy
+        Object.assign(cubeColors,      s.cubeColors      || {});
+        Object.assign(cubeTexts,       s.cubeTexts       || {});
+        Object.assign(cubeFaces,       s.cubeFaces       || {});
         Object.entries(s.cubePositions || {}).forEach(([k,v]) => cubePositions[k] = [...v]);
-        Object.assign(cubeIcons,      s.cubeIcons      || {});
-        Object.assign(cubeIconFaces,  s.cubeIconFaces  || {});
-        Object.assign(cubeIconColors, s.cubeIconColors || {});
+        Object.assign(cubeHidden,      s.cubeHidden      || {});
+        Object.assign(cubeIcons,       s.cubeIcons       || {});
+        Object.assign(cubeIconFaces,   s.cubeIconFaces   || {});
+        Object.assign(cubeIconColors,  s.cubeIconColors  || {});
+        Object.assign(cubeIconFills,   s.cubeIconFills   || {});
+        Object.assign(cubeIconScale,   s.cubeIconScale   || {});
+        Object.assign(cubeIconOffsetX, s.cubeIconOffsetX || {});
+        Object.assign(cubeIconOffsetY, s.cubeIconOffsetY || {});
         return true;
       } catch { return false; }
     }
 
-    // Wrap renderScene to auto-save and re-apply selection after every render
+    // ── History capture / restore ─────────────────────────────────
+    function captureState() {
+      return JSON.stringify({
+        count:       document.getElementById('cubeCount').value,
+        gap:         document.getElementById('gapSlider').value,
+        font:        document.getElementById('fontSlider').value,
+        scale:       document.getElementById('scaleSlider').value,
+        bgColor:     document.getElementById('bgColor').value,
+        autoLabel:       document.getElementById('autoLabel').checked,
+        flatShading:     document.getElementById('flatShading').checked,
+        showShadow:      document.getElementById('showShadow').checked,
+        outlineStroke:   document.getElementById('outlineStroke').checked,
+        strokeWidth:     document.getElementById('strokeWidth').value,
+        strokeColor:     document.getElementById('strokeColor').value,
+        strokeMatchCube: document.getElementById('strokeMatchCube').checked,
+        cornerRadius:    document.getElementById('cornerRadius').value,
+        stackDir:        document.getElementById('stackDir').value,
+        customMode:      document.getElementById('customMode').checked,
+        cubeColors:      { ...cubeColors      },
+        cubeTexts:       { ...cubeTexts       },
+        cubeFaces:       { ...cubeFaces       },
+        cubeHidden:      { ...cubeHidden      },
+        cubePositions:   Object.fromEntries(Object.entries(cubePositions).map(([k,v]) => [k,[...v]])),
+        cubeIcons:       { ...cubeIcons       },
+        cubeIconColors:  { ...cubeIconColors  },
+        cubeIconFills:   { ...cubeIconFills   },
+        cubeIconScale:   { ...cubeIconScale   },
+        cubeIconOffsetX: { ...cubeIconOffsetX },
+        cubeIconOffsetY: { ...cubeIconOffsetY },
+      });
+    }
+
+    function restoreState(snap) {
+      _undoing = true;
+      const s = JSON.parse(snap);
+      document.getElementById('cubeCount').value   = s.count   ?? 1;
+      document.getElementById('gapSlider').value   = s.gap     ?? 0;
+      document.getElementById('fontSlider').value  = s.font    ?? 12;
+      document.getElementById('scaleSlider').value = s.scale   ?? 1;
+      document.getElementById('bgColor').value     = s.bgColor ?? '#ffffff';
+      document.body.style.background               = s.bgColor ?? '#ffffff';
+      document.getElementById('autoLabel').checked      = s.autoLabel      ?? false;
+      document.getElementById('flatShading').checked    = s.flatShading    ?? false;
+      document.getElementById('showShadow').checked     = s.showShadow     ?? false;
+      document.getElementById('outlineStroke').checked  = s.outlineStroke  ?? false;
+      document.getElementById('strokeWidth').value      = s.strokeWidth    ?? 1.5;
+      document.getElementById('strokeColor').value      = s.strokeColor    ?? '#000000';
+      document.getElementById('strokeMatchCube').checked = s.strokeMatchCube ?? false;
+      document.getElementById('cornerRadius').value     = s.cornerRadius   ?? 0;
+      document.getElementById('stackDir').value         = s.stackDir       ?? 'auto';
+      document.getElementById('customMode').checked     = s.customMode     ?? false;
+      document.getElementById('strokeWidthValue').textContent  = s.strokeWidth  ?? 1.5;
+      document.getElementById('cornerRadiusValue').textContent = s.cornerRadius ?? 0;
+      document.getElementById('gapValue').textContent   = parseFloat(s.gap  ?? 0).toFixed(2);
+      document.getElementById('fontValue').textContent  = s.font  ?? 12;
+      document.getElementById('scaleValue').textContent = parseFloat(s.scale ?? 1).toFixed(1);
+      [cubeColors, cubeTexts, cubeFaces, cubeHidden, cubeIcons,
+       cubeIconColors, cubeIconFills, cubeIconScale, cubeIconOffsetX, cubeIconOffsetY]
+        .forEach(obj => Object.keys(obj).forEach(k => delete obj[k]));
+      Object.keys(cubePositions).forEach(k => delete cubePositions[k]);
+      Object.assign(cubeColors,      s.cubeColors      || {});
+      Object.assign(cubeTexts,       s.cubeTexts       || {});
+      Object.assign(cubeFaces,       s.cubeFaces       || {});
+      Object.assign(cubeHidden,      s.cubeHidden      || {});
+      Object.assign(cubeIcons,       s.cubeIcons       || {});
+      Object.assign(cubeIconColors,  s.cubeIconColors  || {});
+      Object.assign(cubeIconFills,   s.cubeIconFills   || {});
+      Object.assign(cubeIconScale,   s.cubeIconScale   || {});
+      Object.assign(cubeIconOffsetX, s.cubeIconOffsetX || {});
+      Object.assign(cubeIconOffsetY, s.cubeIconOffsetY || {});
+      Object.entries(s.cubePositions || {}).forEach(([k,v]) => cubePositions[k] = [...v]);
+      render();
+      saveSettings();
+      _undoing = false;
+    }
+
+    function _pushHistory() {
+      if (_undoing) return;
+      clearTimeout(_histTimer);
+      _histTimer = setTimeout(() => {
+        const snap = captureState();
+        if (snap === _history[_histIdx]) return; // no change
+        _history.splice(_histIdx + 1);            // drop redo branch
+        _history.push(snap);
+        if (_history.length > 80) _history.shift(); else _histIdx++;
+      }, 600);
+    }
+
+    document.addEventListener('keydown', e => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        if (_histIdx > 0) { _histIdx--; restoreState(_history[_histIdx]); }
+      } else if (mod && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
+        e.preventDefault();
+        if (_histIdx < _history.length - 1) { _histIdx++; restoreState(_history[_histIdx]); }
+      }
+    });
+
+    // Wrap renderScene to auto-save, re-apply selection, and push history
     const _renderScene = renderScene;
     renderScene = function() {
       _renderScene();
       saveSettings();
+      _pushHistory();
       if (selectedCube !== null) {
         document.querySelectorAll('[data-cube-index]').forEach(g => {
           g.style.opacity = (parseInt(g.getAttribute('data-cube-index')) === selectedCube) ? '1' : '0.4';
@@ -1394,13 +1667,18 @@
         cornerRadius:    document.getElementById('cornerRadius').value,
         stackDir:        document.getElementById('stackDir').value,
         customMode:      document.getElementById('customMode').checked,
-        cubeColors:     { ...cubeColors     },
-        cubeTexts:      { ...cubeTexts      },
-        cubeFaces:      { ...cubeFaces      },
-        cubePositions:  { ...cubePositions  },
-        cubeIcons:      { ...cubeIcons      },
-        cubeIconFaces:  { ...cubeIconFaces  },
-        cubeIconColors: { ...cubeIconColors },
+        cubeColors:      { ...cubeColors      },
+        cubeTexts:       { ...cubeTexts       },
+        cubeFaces:       { ...cubeFaces       },
+        cubePositions:   Object.fromEntries(Object.entries(cubePositions).map(([k,v]) => [k,[...v]])),
+        cubeHidden:      { ...cubeHidden      },
+        cubeIcons:       { ...cubeIcons       },
+        cubeIconFaces:   { ...cubeIconFaces   },
+        cubeIconColors:  { ...cubeIconColors  },
+        cubeIconFills:   { ...cubeIconFills   },
+        cubeIconScale:   { ...cubeIconScale   },
+        cubeIconOffsetX: { ...cubeIconOffsetX },
+        cubeIconOffsetY: { ...cubeIconOffsetY },
       };
       const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
       const url  = URL.createObjectURL(blob);
@@ -1446,20 +1724,22 @@
           document.getElementById('fontValue').textContent  = s.font  ?? 12;
           document.getElementById('scaleValue').textContent = parseFloat(s.scale ?? 1).toFixed(1);
           document.body.style.background = s.bgColor ?? '#ffffff';
-          Object.keys(cubeColors).forEach(k     => delete cubeColors[k]);
-          Object.keys(cubeTexts).forEach(k      => delete cubeTexts[k]);
-          Object.keys(cubeFaces).forEach(k      => delete cubeFaces[k]);
-          Object.keys(cubePositions).forEach(k  => delete cubePositions[k]);
-          Object.keys(cubeIcons).forEach(k      => delete cubeIcons[k]);
-          Object.keys(cubeIconFaces).forEach(k  => delete cubeIconFaces[k]);
-          Object.keys(cubeIconColors).forEach(k => delete cubeIconColors[k]);
-          Object.assign(cubeColors,     s.cubeColors     || {});
-          Object.assign(cubeTexts,      s.cubeTexts      || {});
-          Object.assign(cubeFaces,      s.cubeFaces      || {});
+          [cubeColors, cubeTexts, cubeFaces, cubeHidden, cubeIcons, cubeIconFaces,
+           cubeIconColors, cubeIconFills, cubeIconScale, cubeIconOffsetX, cubeIconOffsetY]
+            .forEach(obj => Object.keys(obj).forEach(k => delete obj[k]));
+          Object.keys(cubePositions).forEach(k => delete cubePositions[k]);
+          Object.assign(cubeColors,      s.cubeColors      || {});
+          Object.assign(cubeTexts,       s.cubeTexts       || {});
+          Object.assign(cubeFaces,       s.cubeFaces       || {});
           Object.entries(s.cubePositions || {}).forEach(([k,v]) => cubePositions[k] = [...v]);
-          Object.assign(cubeIcons,      s.cubeIcons      || {});
-          Object.assign(cubeIconFaces,  s.cubeIconFaces  || {});
-          Object.assign(cubeIconColors, s.cubeIconColors || {});
+          Object.assign(cubeHidden,      s.cubeHidden      || {});
+          Object.assign(cubeIcons,       s.cubeIcons       || {});
+          Object.assign(cubeIconFaces,   s.cubeIconFaces   || {});
+          Object.assign(cubeIconColors,  s.cubeIconColors  || {});
+          Object.assign(cubeIconFills,   s.cubeIconFills   || {});
+          Object.assign(cubeIconScale,   s.cubeIconScale   || {});
+          Object.assign(cubeIconOffsetX, s.cubeIconOffsetX || {});
+          Object.assign(cubeIconOffsetY, s.cubeIconOffsetY || {});
           render();
         } catch {
           alert('Invalid JSON file.');
@@ -1521,13 +1801,10 @@
       if (confirm('Clear all saved settings and reset to defaults?')) {
         localStorage.removeItem(STORAGE_KEY);
         // Reset state
-        Object.keys(cubeColors).forEach(k     => delete cubeColors[k]);
-        Object.keys(cubeTexts).forEach(k      => delete cubeTexts[k]);
-        Object.keys(cubeFaces).forEach(k      => delete cubeFaces[k]);
-        Object.keys(cubePositions).forEach(k  => delete cubePositions[k]);
-        Object.keys(cubeIcons).forEach(k      => delete cubeIcons[k]);
-        Object.keys(cubeIconFaces).forEach(k  => delete cubeIconFaces[k]);
-        Object.keys(cubeIconColors).forEach(k => delete cubeIconColors[k]);
+        [cubeColors, cubeTexts, cubeFaces, cubeHidden, cubeIcons, cubeIconFaces,
+         cubeIconColors, cubeIconFills, cubeIconScale, cubeIconOffsetX, cubeIconOffsetY]
+          .forEach(obj => Object.keys(obj).forEach(k => delete obj[k]));
+        Object.keys(cubePositions).forEach(k => delete cubePositions[k]);
         document.getElementById('cubeCount').value   = 1;
         document.getElementById('gapSlider').value   = 0;
         document.getElementById('fontSlider').value  = 12;
@@ -1551,6 +1828,54 @@
       }
     });
 
+    // ── Color Palettes ──────────────────────────────────────────
+    const PALETTES = [
+      { name: 'Ocean',      colors: ['#1a6b8a','#2196a8','#45b8c2','#7dd4d8','#b5eaed','#d6f4f5'] },
+      { name: 'Sunset',     colors: ['#c0392b','#e05c2a','#f39c12','#f5c518','#f7dc6f','#fdebd0'] },
+      { name: 'Forest',     colors: ['#1b4332','#2d6a4f','#40916c','#74c69d','#b7e4c7','#d8f3dc'] },
+      { name: 'Monochrome', colors: ['#111111','#333333','#555555','#888888','#bbbbbb','#eeeeee'] },
+      { name: 'Candy',      colors: ['#e91e8c','#9c27b0','#3f51b5','#2196f3','#00bcd4','#4caf50'] },
+      { name: 'Desert',     colors: ['#7b3f00','#b5600a','#d4843e','#e8c07d','#f5deb3','#fffacd'] },
+      { name: 'Nordic',     colors: ['#2e3440','#3b4252','#434c5e','#4c566a','#81a1c1','#88c0d0'] },
+      { name: 'Pastel',     colors: ['#ffb3ba','#ffdfba','#ffffba','#baffc9','#bae1ff','#e8baff'] },
+    ];
+
+    (function buildPaletteUI() {
+      const grid = document.getElementById('palette-grid');
+      PALETTES.forEach(palette => {
+        const row = document.createElement('div');
+        row.className = 'palette-row';
+        row.title = `Apply "${palette.name}" palette`;
+
+        const swatches = document.createElement('div');
+        swatches.className = 'palette-swatches';
+        palette.colors.forEach(c => {
+          const sw = document.createElement('div');
+          sw.className = 'palette-swatch';
+          sw.style.background = c;
+          swatches.appendChild(sw);
+        });
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'palette-name';
+        nameEl.textContent = palette.name;
+
+        row.appendChild(swatches);
+        row.appendChild(nameEl);
+
+        row.addEventListener('click', () => {
+          const count = Math.min(64, Math.max(1, parseInt(document.getElementById('cubeCount').value) || 1));
+          const cols = palette.colors;
+          for (let i = 0; i < count; i++) {
+            cubeColors[i] = cols[i % cols.length];
+          }
+          render();
+        });
+
+        grid.appendChild(row);
+      });
+    })();
+
     loadSettings();
     // Sync stroke color picker disabled state after loading
     const _matchCube = document.getElementById('strokeMatchCube');
@@ -1559,6 +1884,9 @@
       document.getElementById('strokeColor').disabled = true;
     }
     render();
+    // Seed undo history with the initial state so Ctrl+Z has a base to return to
+    _history.push(captureState());
+    _histIdx = 0;
   </script>
 </body>
 </html>
