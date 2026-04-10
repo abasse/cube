@@ -44,9 +44,43 @@
     }
 
     /* ── Settings area ── */
-    #sidebar-header {
+    #tab-bar {
+      display: flex;
       flex-shrink: 0;
+      background: #fff;
+      border-bottom: 2px solid #e0e0e0;
     }
+    .tab-btn {
+      flex: 1;
+      padding: 10px 0;
+      font-size: 12px;
+      font-weight: 500;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      color: #999;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: #444; }
+    .tab-btn.active { color: #111; border-bottom-color: #111; font-weight: 600; }
+
+    .tab-panel {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+    .tab-panel.active { display: flex; }
+
+    #tab-settings {
+      overflow-y: auto;
+    }
+    #tab-settings::-webkit-scrollbar { width: 4px; }
+    #tab-settings::-webkit-scrollbar-track { background: transparent; }
+    #tab-settings::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
 
     /* ── Section groups ── */
     .section {
@@ -445,15 +479,30 @@
 <body>
   <div id="sidebar">
     <div id="sidebar-title">Isometric Cube Builder</div>
-    <div id="sidebar-header">
+
+    <!-- Tab bar -->
+    <div id="tab-bar">
+      <button class="tab-btn active" data-tab="cubes">Cubes</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </div>
+
+    <!-- ── Tab 1: Cubes ── -->
+    <div class="tab-panel active" id="tab-cubes">
+      <div class="section" style="flex-shrink:0; border-bottom:1px solid #e8e8e8;">
+        <div class="field">
+          <label for="cubeCount">Number of cubes</label>
+          <input type="number" id="cubeCount" min="1" max="64" value="1">
+        </div>
+      </div>
+      <div id="color-list"></div>
+    </div>
+
+    <!-- ── Tab 2: Settings ── -->
+    <div class="tab-panel" id="tab-settings">
 
       <!-- Layout section -->
       <div class="section">
         <div class="section-title">Layout</div>
-        <div class="field">
-          <label for="cubeCount">Cubes</label>
-          <input type="number" id="cubeCount" min="1" max="64" value="1">
-        </div>
         <div class="field">
           <label for="stackDir">Stack</label>
           <select id="stackDir">
@@ -556,7 +605,7 @@
         <div id="palette-grid"></div>
       </div>
 
-      <!-- Actions section -->
+      <!-- Actions -->
       <div class="btn-group two">
         <button id="saveJson" class="action-btn">Save JSON</button>
         <button id="loadJson" class="action-btn">Load JSON</button>
@@ -572,7 +621,6 @@
       </div>
 
     </div>
-    <div id="color-list"></div>
   </div>
 
   <svg id="scene" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -1842,6 +1890,16 @@
         document.body.style.background = '#ffffff';
         render();
       }
+    });
+
+    // ── Tabs ─────────────────────────────────────────────────────
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
     });
 
     // ── Color Palettes ──────────────────────────────────────────
