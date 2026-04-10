@@ -216,6 +216,43 @@
     }
     button.action-btn.danger:hover { background: #fdf0f0; border-color: #c0392b; }
 
+    /* ── Palette grid ── */
+    #palette-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .palette-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      border-radius: 5px;
+      padding: 4px 6px;
+      transition: background 0.12s;
+    }
+    .palette-row:hover { background: #ebebeb; }
+    .palette-swatches {
+      display: flex;
+      gap: 3px;
+      flex: 1;
+    }
+    .palette-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      border: 1px solid rgba(0,0,0,0.12);
+      flex-shrink: 0;
+    }
+    .palette-name {
+      font-size: 11px;
+      color: #555;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
     /* ── Cube list ── */
     #color-list {
       flex: 1;
@@ -333,6 +370,69 @@
     }
     .cube-pos-input:focus { outline: none; border-color: #222; }
 
+    .cube-icon-toggle {
+      width: 100%;
+      padding: 3px 7px;
+      font-size: 11px;
+      font-weight: 500;
+      text-align: left;
+      background: none;
+      border: 1px solid #e8e8e8;
+      border-radius: 4px;
+      color: #888;
+      cursor: pointer;
+    }
+    .cube-icon-toggle:hover { background: #f8f8f8; color: #444; }
+    .cube-icon-toggle.has-icon { color: #222; border-color: #ccc; }
+
+    .cube-icon-section {
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .cube-icon-section.open { display: flex; }
+
+    .cube-icon-textarea {
+      width: 100%;
+      height: 72px;
+      padding: 5px 7px;
+      font-size: 10px;
+      font-family: monospace;
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      color: #333;
+      resize: vertical;
+      box-sizing: border-box;
+      line-height: 1.4;
+    }
+    .cube-icon-textarea:focus { outline: none; border-color: #222; }
+    .cube-icon-textarea::placeholder { color: #bbb; }
+
+    .cube-icon-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cube-icon-controls label {
+      font-size: 10px;
+      color: #aaa;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+    .cube-icon-controls input[type="color"] {
+      width: 28px;
+      height: 22px;
+      padding: 1px;
+      border: 1px solid #e0e0e0;
+      border-radius: 3px;
+      background: #f8f8f8;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
     #scene { display: block; margin-left: 260px; }
   </style>
 </head>
@@ -418,6 +518,13 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div class="toggle-wrap">
+          <label for="outlineStroke">Outline</label>
+          <label class="toggle">
+            <input type="checkbox" id="outlineStroke">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </div>
 
       <!-- Text section -->
@@ -437,6 +544,12 @@
         </div>
       </div>
 
+      <!-- Palette section -->
+      <div class="section">
+        <div class="section-title">Color Palettes</div>
+        <div id="palette-grid"></div>
+      </div>
+
       <!-- Actions section -->
       <div class="btn-group two">
         <button id="saveJson" class="action-btn">Save JSON</button>
@@ -445,7 +558,7 @@
       </div>
       <div class="btn-group two">
         <button id="exportSvg" class="action-btn primary">Export SVG</button>
-        <button id="copySvg" class="action-btn">Copy SVG</button>
+        <button id="copySvg" class="action-btn">Copy Image</button>
       </div>
       <div class="btn-group two">
         <button id="deselectAll" class="action-btn">Deselect all</button>
@@ -463,10 +576,24 @@
     const DX = S * Math.sqrt(3) / 2;
     const DY = S / 2;
 
-    const cubeColors     = {};
-    const cubeTexts      = {};
-    const cubeFaces      = {};
-    const cubePositions  = {}; // custom mode: {i: [gx,gy,gz]}
+    const cubeColors      = {};
+    const cubeTexts       = {};
+    const cubeFaces       = {};
+    const cubePositions   = {}; // custom mode: {i: [gx,gy,gz]}
+    const cubeHidden      = {}; // visibility toggle
+    const cubeIcons       = {}; // SVG string per cube
+    const cubeIconFaces   = {}; // (legacy, unused – face comes from cubeFaces)
+    const cubeIconColors  = {}; // stroke color for icon
+    const cubeIconFills   = {}; // fill color for icon ('' = none)
+    const cubeIconScale   = {}; // size multiplier (default 1.0)
+    const cubeIconOffsetX = {}; // horizontal offset, fraction of face width
+    const cubeIconOffsetY = {}; // vertical offset, fraction of face height
+
+    // ── Undo / Redo ───────────────────────────────────────────────
+    const _history = [];
+    let   _histIdx  = -1;
+    let   _undoing  = false;
+    let   _histTimer = null;
 
     function project(gx, gy, gz) {
       return {
@@ -529,6 +656,13 @@
         Math.round(hue2rgb(pp, q, h) * 255),
         Math.round(hue2rgb(pp, q, h - 1/3) * 255),
       ];
+    }
+
+    function innerEdgeColor(hex) {
+      const [h, s, l] = rgbToHsl(hexToRgb(hex));
+      // Threshold at 0.4 so dark reds/navies also get lightened
+      if (l < 0.4) return rgbToHex(hslToRgb([h, s, Math.min(1, l + 0.3)]));
+      return rgbToHex(hslToRgb([h, s, Math.max(0, l - 0.3)]));
     }
 
     function lightenColor(hex) {
@@ -629,7 +763,79 @@
       });
     }
 
-    function drawCube(gx, gy, gz, svg, ox, oy, colors, gap, text, textFace, cubeIndex) {
+    // Places an SVG icon on a parallelogram face, correctly skewed to match the perspective.
+    // origin, rightPt, upPt are the same three screen-space points used by drawTextOnFace.
+    function drawIconOnFace(svg, iconSvgStr, iconColor, iconFill, userScale, offsetX, offsetY, origin, rightPt, upPt) {
+      // Parse the SVG string (accepts full <svg>…</svg> or bare inner elements)
+      const parser = new DOMParser();
+      let iconSvgEl;
+      const trimmed = iconSvgStr.trim();
+      if (/^<svg[\s>]/i.test(trimmed)) {
+        const doc = parser.parseFromString(trimmed, 'image/svg+xml');
+        if (doc.querySelector('parsererror')) return;
+        iconSvgEl = doc.querySelector('svg');
+      } else {
+        // Wrap bare elements in an SVG shell so we can parse them
+        const doc = parser.parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${trimmed}</svg>`, 'image/svg+xml');
+        if (doc.querySelector('parsererror')) return;
+        iconSvgEl = doc.querySelector('svg');
+      }
+      if (!iconSvgEl) return;
+
+      // Determine icon coordinate space
+      const vb = iconSvgEl.viewBox && iconSvgEl.viewBox.baseVal;
+      const iconW = (vb && vb.width  > 0) ? vb.width  : (parseFloat(iconSvgEl.getAttribute('width'))  || 24);
+      const iconH = (vb && vb.height > 0) ? vb.height : (parseFloat(iconSvgEl.getAttribute('height')) || 24);
+      const vbX   = (vb && vb.x) || 0;
+      const vbY   = (vb && vb.y) || 0;
+
+      // Face geometry — identical math to drawTextOnFace
+      const rx = rightPt.x - origin.x,  ry = rightPt.y - origin.y;
+      const ux = upPt.x   - origin.x,   uy = upPt.y   - origin.y;
+      const faceW = Math.sqrt(rx*rx + ry*ry);
+      const faceH = Math.sqrt(ux*ux + uy*uy);
+
+      // Face center (midpoint of both diagonals of the parallelogram)
+      const cx = (rightPt.x + upPt.x) / 2;
+      const cy = (rightPt.y + upPt.y) / 2;
+
+      // Scale: 68% base × user multiplier
+      const iconScale = 0.68 * Math.min(faceW / iconW, faceH / iconH) * (userScale || 1);
+
+      // Build the perspective transform:
+      //   local +x → face right axis (unit vector × scale)
+      //   local +y → face down axis (negate up, × scale)
+      const a  =  (rx / faceW) * iconScale;
+      const b  =  (ry / faceW) * iconScale;
+      const c  = -(ux / faceH) * iconScale;
+      const d  = -(uy / faceH) * iconScale;
+      // Offset in face-space → screen-space (fractions of face dimensions)
+      const ox2 = (offsetX || 0) * rx + (offsetY || 0) * (-ux);
+      const oy2 = (offsetX || 0) * ry + (offsetY || 0) * (-uy);
+      // Translate so the icon centre lands on the face centre + offset
+      const te = cx + ox2 - a * (iconW / 2) - c * (iconH / 2);
+      const tf = cy + oy2 - b * (iconW / 2) - d * (iconH / 2);
+
+      // Outer group: applies perspective + position
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', `matrix(${a},${b},${c},${d},${te},${tf})`);
+      g.setAttribute('pointer-events', 'none');
+
+      // Inner group: shifts viewBox origin if needed, applies icon stroke color
+      const inner = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      if (vbX !== 0 || vbY !== 0) inner.setAttribute('transform', `translate(${-vbX},${-vbY})`);
+      inner.setAttribute('stroke', iconColor);
+      if (iconFill) inner.setAttribute('fill', iconFill);
+
+      Array.from(iconSvgEl.childNodes).forEach(node => {
+        if (node.nodeType === 1) inner.appendChild(document.importNode(node, true));
+      });
+
+      g.appendChild(inner);
+      svg.appendChild(g);
+    }
+
+    function drawCube(gx, gy, gz, svg, ox, oy, colors, gap, text, textFace, cubeIndex, iconSvg, iconFace, iconColor, iconFill, iconScale, iconOffX, iconOffY) {
       const g = gap;
 
       const vp = (lx, ly, lz) => {
@@ -691,6 +897,8 @@
       cubeGroup.addEventListener('click', () => selectCube(cubeIndex));
       svg.appendChild(cubeGroup);
 
+      const outlineMode = document.getElementById('outlineStroke').checked;
+
       [
         { pts: leftPts,  fill: colors.left  },
         { pts: rightPts, fill: colors.right },
@@ -699,7 +907,7 @@
         const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         el.setAttribute('d', roundedParallelogram(pts));
         el.setAttribute('fill', fill);
-        if (strokeW > 0) {
+        if (!outlineMode && strokeW > 0) {
           el.setAttribute('stroke', strokeCol);
           el.setAttribute('stroke-width', strokeW);
         } else {
@@ -709,7 +917,50 @@
         cubeGroup.appendChild(el);
       });
 
-      if (text && text.trim()) {
+      if (outlineMode && strokeW > 0) {
+        // Inner edges: slightly darker (or lighter for dark cubes) than the cube color
+        const innerW = Math.max(0.75, strokeW * 0.6);
+        const innerCol = innerEdgeColor(colors.top);
+        [
+          { from: pg(0,1,1), to: pg(1,1,1) }, // top ↔ left ridge
+          { from: pg(1,0,1), to: pg(1,1,1) }, // top ↔ right ridge
+          { from: pg(1,1,0), to: pg(1,1,1) }, // left ↔ right front edge
+        ].forEach(({ from, to }) => {
+          const color = innerCol;
+          const [fx, fy] = from.split(',').map(Number);
+          const [tx, ty] = to.split(',').map(Number);
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', fx + ox); line.setAttribute('y1', fy + oy);
+          line.setAttribute('x2', tx + ox); line.setAttribute('y2', ty + oy);
+          line.setAttribute('stroke', color);
+          line.setAttribute('stroke-width', innerW);
+          line.setAttribute('stroke-linecap', 'round');
+          cubeGroup.appendChild(line);
+        });
+
+        // Outer silhouette hexagon: thick black stroke
+        const outerPts = [pg(0,0,1), pg(1,0,1), pg(1,0,0), pg(1,1,0), pg(0,1,0), pg(0,1,1)];
+        const outerEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        outerEl.setAttribute('d', roundedParallelogram(outerPts));
+        outerEl.setAttribute('fill', 'none');
+        outerEl.setAttribute('stroke', '#000000');
+        outerEl.setAttribute('stroke-width', strokeW);
+        outerEl.setAttribute('stroke-linejoin', 'round');
+        cubeGroup.appendChild(outerEl);
+      }
+
+      if (iconSvg && iconSvg.trim()) {
+        // Icon takes priority over text; uses the same face selector
+        const col = iconColor || '#000000';
+        const drawIconL = () => drawIconOnFace(cubeGroup, iconSvg, col, iconFill, iconScale, iconOffX, iconOffY, vp(0,1,0), vp(1,1,0), vp(0,1,1));
+        const drawIconR = () => drawIconOnFace(cubeGroup, iconSvg, col, iconFill, iconScale, iconOffX, iconOffY, vp(1,1,0), vp(1,0,0), vp(1,1,1));
+        const drawIconT = () => drawIconOnFace(cubeGroup, iconSvg, col, iconFill, iconScale, iconOffX, iconOffY, vp(0,1,1), vp(1,1,1), vp(0,0,1));
+
+        if      (textFace === 'left')  drawIconL();
+        else if (textFace === 'right') drawIconR();
+        else if (textFace === 'top')   drawIconT();
+        else if (textFace === 'all')   { drawIconL(); drawIconR(); drawIconT(); }
+      } else if (text && text.trim()) {
         const lines = text.trim().split('_').map(l => l.trim()).filter(l => l.length > 0);
         const fontSize = parseInt(document.getElementById('fontSlider').value);
 
@@ -729,28 +980,52 @@
       if (count <= 1) return;
       // Shift all data down from idx
       for (let j = idx; j < count - 1; j++) {
-        cubeColors[j]    = cubeColors[j + 1];
-        cubeTexts[j]     = cubeTexts[j + 1];
-        cubeFaces[j]     = cubeFaces[j + 1];
-        cubePositions[j] = cubePositions[j + 1];
+        cubeColors[j]      = cubeColors[j + 1];
+        cubeTexts[j]       = cubeTexts[j + 1];
+        cubeFaces[j]       = cubeFaces[j + 1];
+        cubePositions[j]   = cubePositions[j + 1];
+        cubeHidden[j]      = cubeHidden[j + 1];
+        cubeIcons[j]       = cubeIcons[j + 1];
+        cubeIconFaces[j]   = cubeIconFaces[j + 1];
+        cubeIconColors[j]  = cubeIconColors[j + 1];
+        cubeIconFills[j]   = cubeIconFills[j + 1];
+        cubeIconScale[j]   = cubeIconScale[j + 1];
+        cubeIconOffsetX[j] = cubeIconOffsetX[j + 1];
+        cubeIconOffsetY[j] = cubeIconOffsetY[j + 1];
       }
       delete cubeColors[count - 1];
       delete cubeTexts[count - 1];
       delete cubeFaces[count - 1];
       delete cubePositions[count - 1];
+      delete cubeHidden[count - 1];
+      delete cubeIcons[count - 1];
+      delete cubeIconFaces[count - 1];
+      delete cubeIconColors[count - 1];
+      delete cubeIconFills[count - 1];
+      delete cubeIconScale[count - 1];
+      delete cubeIconOffsetX[count - 1];
+      delete cubeIconOffsetY[count - 1];
       document.getElementById('cubeCount').value = count - 1;
       render();
     }
 
     function buildCubeRow(i) {
-      if (!cubeColors[i])    cubeColors[i]    = '#ffffff';
-      if (!cubeTexts[i])     cubeTexts[i]     = '';
-      if (!cubeFaces[i])     cubeFaces[i]     = 'left';
-      if (!cubePositions[i]) cubePositions[i] = [i, 0, 0];
+      if (!cubeColors[i])     cubeColors[i]     = '#ffffff';
+      if (!cubeTexts[i])      cubeTexts[i]      = '';
+      if (!cubeFaces[i])      cubeFaces[i]      = 'left';
+      if (!cubePositions[i])  cubePositions[i]  = [i, 0, 0];
+      if (cubeHidden[i]      === undefined) cubeHidden[i]      = false;
+      if (cubeIcons[i]       === undefined) cubeIcons[i]       = '';
+      if (cubeIconColors[i]  === undefined) cubeIconColors[i]  = '#000000';
+      if (cubeIconFills[i]   === undefined) cubeIconFills[i]   = '';
+      if (cubeIconScale[i]   === undefined) cubeIconScale[i]   = 1;
+      if (cubeIconOffsetX[i] === undefined) cubeIconOffsetX[i] = 0;
+      if (cubeIconOffsetY[i] === undefined) cubeIconOffsetY[i] = 0;
 
       const row = document.createElement('div');
       row.className = 'cube-row';
       row.draggable = true;
+      if (cubeHidden[i]) row.style.opacity = '0.45';
       row.dataset.index = i;
 
       row.addEventListener('dragstart', e => {
@@ -770,10 +1045,17 @@
         const shiftSwap = (obj, a, b) => { const t = obj[a]; obj[a] = obj[b]; obj[b] = t; };
         const dir = fromIdx < toIdx ? 1 : -1;
         for (let j = fromIdx; j !== toIdx; j += dir) {
-          shiftSwap(cubeColors,    j, j + dir);
-          shiftSwap(cubeTexts,     j, j + dir);
-          shiftSwap(cubeFaces,     j, j + dir);
-          shiftSwap(cubePositions, j, j + dir);
+          shiftSwap(cubeColors,      j, j + dir);
+          shiftSwap(cubeTexts,       j, j + dir);
+          shiftSwap(cubeFaces,       j, j + dir);
+          shiftSwap(cubePositions,   j, j + dir);
+          shiftSwap(cubeHidden,      j, j + dir);
+          shiftSwap(cubeIcons,       j, j + dir);
+          shiftSwap(cubeIconColors,  j, j + dir);
+          shiftSwap(cubeIconFills,   j, j + dir);
+          shiftSwap(cubeIconScale,   j, j + dir);
+          shiftSwap(cubeIconOffsetX, j, j + dir);
+          shiftSwap(cubeIconOffsetY, j, j + dir);
         }
         render();
       });
@@ -801,9 +1083,25 @@
       removeBtn.title = 'Remove cube';
       removeBtn.addEventListener('click', () => removeCube(i));
 
+      // Visibility toggle button
+      const visBtn = document.createElement('button');
+      visBtn.type = 'button';
+      visBtn.className = 'cube-remove-btn';
+      visBtn.title = 'Toggle visibility';
+      visBtn.textContent = cubeHidden[i] ? '👁' : '●';
+      visBtn.style.opacity = cubeHidden[i] ? '0.35' : '1';
+      visBtn.addEventListener('click', () => {
+        cubeHidden[i] = !cubeHidden[i];
+        visBtn.textContent = cubeHidden[i] ? '👁' : '●';
+        visBtn.style.opacity = cubeHidden[i] ? '0.35' : '1';
+        row.style.opacity = cubeHidden[i] ? '0.45' : '1';
+        renderScene();
+      });
+
       top.appendChild(handle);
       top.appendChild(lbl);
       top.appendChild(colorInput);
+      top.appendChild(visBtn);
       top.appendChild(removeBtn);
 
       const autoLabel = document.getElementById('autoLabel').checked;
@@ -830,6 +1128,123 @@
       row.appendChild(top);
       row.appendChild(textInput);
       row.appendChild(faceSelect);
+
+      // ── Icon section ──────────────────────────────────────────────
+      const hasIcon = !!cubeIcons[i];
+
+      const iconToggle = document.createElement('button');
+      iconToggle.type = 'button';
+      iconToggle.className = 'cube-icon-toggle' + (hasIcon ? ' has-icon' : '');
+      iconToggle.textContent = hasIcon ? 'Icon ▾' : 'Icon ▸';
+
+      const iconSection = document.createElement('div');
+      iconSection.className = 'cube-icon-section' + (hasIcon ? ' open' : '');
+
+      iconToggle.addEventListener('click', () => {
+        const open = iconSection.classList.toggle('open');
+        iconToggle.textContent = open ? 'Icon ▾' : 'Icon ▸';
+      });
+
+      // Textarea for SVG code
+      const iconTextarea = document.createElement('textarea');
+      iconTextarea.className = 'cube-icon-textarea';
+      iconTextarea.placeholder = 'Paste SVG code here…';
+      iconTextarea.spellcheck = false;
+      iconTextarea.value = cubeIcons[i];
+      iconTextarea.addEventListener('input', e => {
+        cubeIcons[i] = e.target.value;
+        const hasNow = !!e.target.value.trim();
+        iconToggle.classList.toggle('has-icon', hasNow);
+        renderScene();
+      });
+
+      // Row 1: Stroke + Fill colors
+      const iconColorInput = document.createElement('input');
+      iconColorInput.type = 'color';
+      iconColorInput.value = cubeIconColors[i];
+      iconColorInput.addEventListener('input', e => { cubeIconColors[i] = e.target.value; renderScene(); });
+
+      const iconFillCheck = document.createElement('input');
+      iconFillCheck.type = 'checkbox';
+      iconFillCheck.style.accentColor = '#222';
+      iconFillCheck.checked = !!cubeIconFills[i];
+
+      const iconFillInput = document.createElement('input');
+      iconFillInput.type = 'color';
+      iconFillInput.value = cubeIconFills[i] || '#000000';
+      iconFillInput.disabled = !cubeIconFills[i];
+      iconFillInput.style.opacity = cubeIconFills[i] ? '1' : '0.35';
+      iconFillInput.addEventListener('input', e => { cubeIconFills[i] = e.target.value; renderScene(); });
+      iconFillCheck.addEventListener('change', e => {
+        const on = e.target.checked;
+        cubeIconFills[i] = on ? iconFillInput.value : '';
+        iconFillInput.disabled = !on;
+        iconFillInput.style.opacity = on ? '1' : '0.35';
+        renderScene();
+      });
+
+      const iconControls = document.createElement('div');
+      iconControls.className = 'cube-icon-controls';
+      const strokeLbl = document.createElement('label');
+      strokeLbl.textContent = 'Stroke';
+      const fillLbl = document.createElement('label');
+      fillLbl.textContent = 'Fill';
+      iconControls.appendChild(strokeLbl);
+      iconControls.appendChild(iconColorInput);
+      iconControls.appendChild(fillLbl);
+      iconControls.appendChild(iconFillCheck);
+      iconControls.appendChild(iconFillInput);
+
+      // Row 2: Size slider
+      const iconScaleRow = document.createElement('div');
+      iconScaleRow.className = 'cube-icon-controls';
+      const scaleLbl = document.createElement('label');
+      scaleLbl.textContent = 'Size';
+      const iconScaleVal = document.createElement('span');
+      iconScaleVal.style.cssText = 'font-size:10px;color:#888;min-width:26px;text-align:right;';
+      iconScaleVal.textContent = (cubeIconScale[i] ?? 1).toFixed(1) + '×';
+      const iconScaleSlider = document.createElement('input');
+      iconScaleSlider.type = 'range'; iconScaleSlider.min = 0.2; iconScaleSlider.max = 2;
+      iconScaleSlider.step = 0.1; iconScaleSlider.value = cubeIconScale[i] ?? 1;
+      iconScaleSlider.style.flex = '1';
+      iconScaleSlider.addEventListener('input', e => {
+        cubeIconScale[i] = parseFloat(e.target.value);
+        iconScaleVal.textContent = cubeIconScale[i].toFixed(1) + '×';
+        renderScene();
+      });
+      iconScaleRow.appendChild(scaleLbl);
+      iconScaleRow.appendChild(iconScaleSlider);
+      iconScaleRow.appendChild(iconScaleVal);
+
+      // Row 3: Offset X + Y
+      const iconOffRow = document.createElement('div');
+      iconOffRow.className = 'cube-icon-controls';
+      const mkOff = (label, obj, key, min, max) => {
+        const lbl2 = document.createElement('label');
+        lbl2.textContent = label;
+        const valSpan = document.createElement('span');
+        valSpan.style.cssText = 'font-size:10px;color:#888;min-width:30px;text-align:right;';
+        valSpan.textContent = (obj[key] ?? 0).toFixed(2);
+        const sl = document.createElement('input');
+        sl.type = 'range'; sl.min = min; sl.max = max; sl.step = 0.05;
+        sl.value = obj[key] ?? 0; sl.style.flex = '1';
+        sl.addEventListener('input', e => {
+          obj[key] = parseFloat(e.target.value);
+          valSpan.textContent = obj[key].toFixed(2);
+          renderScene();
+        });
+        return [lbl2, sl, valSpan];
+      };
+      mkOff('↔', cubeIconOffsetX, i, -0.5, 0.5).forEach(el => iconOffRow.appendChild(el));
+      mkOff('↕', cubeIconOffsetY, i, -0.5, 0.5).forEach(el => iconOffRow.appendChild(el));
+
+      iconSection.appendChild(iconTextarea);
+      iconSection.appendChild(iconControls);
+      iconSection.appendChild(iconScaleRow);
+      iconSection.appendChild(iconOffRow);
+
+      row.appendChild(iconToggle);
+      row.appendChild(iconSection);
 
       // Custom position inputs (shown when custom mode is on)
       const posRow = document.createElement('div');
@@ -965,10 +1380,13 @@
       }
 
       sorted.forEach(({ pos: [gx, gy, gz], i }) => {
+        if (cubeHidden[i]) return; // skip hidden cubes
         const topHex  = cubeColors[i] || '#ffffff';
         const text    = cubeTexts[i]  || '';
         const face    = cubeFaces[i]  || 'left';
-        drawCube(gx, gy, gz, g, ox, oy, deriveFaceColors(topHex), gap, text, face, i);
+        drawCube(gx, gy, gz, g, ox, oy, deriveFaceColors(topHex), gap, text, face, i,
+          cubeIcons[i] || '', cubeFaces[i] || 'left', cubeIconColors[i] || '#000000',
+          cubeIconFills[i] || '', cubeIconScale[i] ?? 1, cubeIconOffsetX[i] ?? 0, cubeIconOffsetY[i] ?? 0);
       });
     }
 
@@ -984,16 +1402,25 @@
         autoLabel:       document.getElementById('autoLabel').checked,
         flatShading:     document.getElementById('flatShading').checked,
         showShadow:      document.getElementById('showShadow').checked,
+        outlineStroke:   document.getElementById('outlineStroke').checked,
         strokeWidth:     document.getElementById('strokeWidth').value,
         strokeColor:     document.getElementById('strokeColor').value,
         strokeMatchCube: document.getElementById('strokeMatchCube').checked,
         cornerRadius:    document.getElementById('cornerRadius').value,
         stackDir:        document.getElementById('stackDir').value,
         customMode:      document.getElementById('customMode').checked,
-        cubeColors:     { ...cubeColors    },
-        cubeTexts:      { ...cubeTexts     },
-        cubeFaces:      { ...cubeFaces     },
-        cubePositions:  { ...cubePositions },
+        cubeColors:      { ...cubeColors      },
+        cubeTexts:       { ...cubeTexts       },
+        cubeFaces:       { ...cubeFaces       },
+        cubePositions:   Object.fromEntries(Object.entries(cubePositions).map(([k,v]) => [k,[...v]])),
+        cubeHidden:      { ...cubeHidden      },
+        cubeIcons:       { ...cubeIcons       },
+        cubeIconFaces:   { ...cubeIconFaces   },
+        cubeIconColors:  { ...cubeIconColors  },
+        cubeIconFills:   { ...cubeIconFills   },
+        cubeIconScale:   { ...cubeIconScale   },
+        cubeIconOffsetX: { ...cubeIconOffsetX },
+        cubeIconOffsetY: { ...cubeIconOffsetY },
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     }
@@ -1011,6 +1438,7 @@
         document.getElementById('autoLabel').checked   = s.autoLabel   ?? false;
         document.getElementById('flatShading').checked    = s.flatShading  ?? false;
         document.getElementById('showShadow').checked     = s.showShadow   ?? false;
+        document.getElementById('outlineStroke').checked  = s.outlineStroke ?? false;
         document.getElementById('strokeWidth').value           = s.strokeWidth      ?? 1.5;
         document.getElementById('strokeColor').value           = s.strokeColor      ?? '#000000';
         document.getElementById('strokeMatchCube').checked     = s.strokeMatchCube  ?? false;
@@ -1023,20 +1451,127 @@
         document.getElementById('fontValue').textContent  = s.font  ?? 12;
         document.getElementById('scaleValue').textContent = parseFloat(s.scale ?? 1).toFixed(1);
         document.body.style.background = s.bgColor ?? '#ffffff';
-        Object.assign(cubeColors,    s.cubeColors    || {});
-        Object.assign(cubeTexts,     s.cubeTexts     || {});
-        Object.assign(cubeFaces,     s.cubeFaces     || {});
-        // cubePositions values are arrays, need deep copy
+        Object.assign(cubeColors,      s.cubeColors      || {});
+        Object.assign(cubeTexts,       s.cubeTexts       || {});
+        Object.assign(cubeFaces,       s.cubeFaces       || {});
         Object.entries(s.cubePositions || {}).forEach(([k,v]) => cubePositions[k] = [...v]);
+        Object.assign(cubeHidden,      s.cubeHidden      || {});
+        Object.assign(cubeIcons,       s.cubeIcons       || {});
+        Object.assign(cubeIconFaces,   s.cubeIconFaces   || {});
+        Object.assign(cubeIconColors,  s.cubeIconColors  || {});
+        Object.assign(cubeIconFills,   s.cubeIconFills   || {});
+        Object.assign(cubeIconScale,   s.cubeIconScale   || {});
+        Object.assign(cubeIconOffsetX, s.cubeIconOffsetX || {});
+        Object.assign(cubeIconOffsetY, s.cubeIconOffsetY || {});
         return true;
       } catch { return false; }
     }
 
-    // Wrap renderScene to auto-save and re-apply selection after every render
+    // ── History capture / restore ─────────────────────────────────
+    function captureState() {
+      return JSON.stringify({
+        count:       document.getElementById('cubeCount').value,
+        gap:         document.getElementById('gapSlider').value,
+        font:        document.getElementById('fontSlider').value,
+        scale:       document.getElementById('scaleSlider').value,
+        bgColor:     document.getElementById('bgColor').value,
+        autoLabel:       document.getElementById('autoLabel').checked,
+        flatShading:     document.getElementById('flatShading').checked,
+        showShadow:      document.getElementById('showShadow').checked,
+        outlineStroke:   document.getElementById('outlineStroke').checked,
+        strokeWidth:     document.getElementById('strokeWidth').value,
+        strokeColor:     document.getElementById('strokeColor').value,
+        strokeMatchCube: document.getElementById('strokeMatchCube').checked,
+        cornerRadius:    document.getElementById('cornerRadius').value,
+        stackDir:        document.getElementById('stackDir').value,
+        customMode:      document.getElementById('customMode').checked,
+        cubeColors:      { ...cubeColors      },
+        cubeTexts:       { ...cubeTexts       },
+        cubeFaces:       { ...cubeFaces       },
+        cubeHidden:      { ...cubeHidden      },
+        cubePositions:   Object.fromEntries(Object.entries(cubePositions).map(([k,v]) => [k,[...v]])),
+        cubeIcons:       { ...cubeIcons       },
+        cubeIconColors:  { ...cubeIconColors  },
+        cubeIconFills:   { ...cubeIconFills   },
+        cubeIconScale:   { ...cubeIconScale   },
+        cubeIconOffsetX: { ...cubeIconOffsetX },
+        cubeIconOffsetY: { ...cubeIconOffsetY },
+      });
+    }
+
+    function restoreState(snap) {
+      _undoing = true;
+      const s = JSON.parse(snap);
+      document.getElementById('cubeCount').value   = s.count   ?? 1;
+      document.getElementById('gapSlider').value   = s.gap     ?? 0;
+      document.getElementById('fontSlider').value  = s.font    ?? 12;
+      document.getElementById('scaleSlider').value = s.scale   ?? 1;
+      document.getElementById('bgColor').value     = s.bgColor ?? '#ffffff';
+      document.body.style.background               = s.bgColor ?? '#ffffff';
+      document.getElementById('autoLabel').checked      = s.autoLabel      ?? false;
+      document.getElementById('flatShading').checked    = s.flatShading    ?? false;
+      document.getElementById('showShadow').checked     = s.showShadow     ?? false;
+      document.getElementById('outlineStroke').checked  = s.outlineStroke  ?? false;
+      document.getElementById('strokeWidth').value      = s.strokeWidth    ?? 1.5;
+      document.getElementById('strokeColor').value      = s.strokeColor    ?? '#000000';
+      document.getElementById('strokeMatchCube').checked = s.strokeMatchCube ?? false;
+      document.getElementById('cornerRadius').value     = s.cornerRadius   ?? 0;
+      document.getElementById('stackDir').value         = s.stackDir       ?? 'auto';
+      document.getElementById('customMode').checked     = s.customMode     ?? false;
+      document.getElementById('strokeWidthValue').textContent  = s.strokeWidth  ?? 1.5;
+      document.getElementById('cornerRadiusValue').textContent = s.cornerRadius ?? 0;
+      document.getElementById('gapValue').textContent   = parseFloat(s.gap  ?? 0).toFixed(2);
+      document.getElementById('fontValue').textContent  = s.font  ?? 12;
+      document.getElementById('scaleValue').textContent = parseFloat(s.scale ?? 1).toFixed(1);
+      [cubeColors, cubeTexts, cubeFaces, cubeHidden, cubeIcons,
+       cubeIconColors, cubeIconFills, cubeIconScale, cubeIconOffsetX, cubeIconOffsetY]
+        .forEach(obj => Object.keys(obj).forEach(k => delete obj[k]));
+      Object.keys(cubePositions).forEach(k => delete cubePositions[k]);
+      Object.assign(cubeColors,      s.cubeColors      || {});
+      Object.assign(cubeTexts,       s.cubeTexts       || {});
+      Object.assign(cubeFaces,       s.cubeFaces       || {});
+      Object.assign(cubeHidden,      s.cubeHidden      || {});
+      Object.assign(cubeIcons,       s.cubeIcons       || {});
+      Object.assign(cubeIconColors,  s.cubeIconColors  || {});
+      Object.assign(cubeIconFills,   s.cubeIconFills   || {});
+      Object.assign(cubeIconScale,   s.cubeIconScale   || {});
+      Object.assign(cubeIconOffsetX, s.cubeIconOffsetX || {});
+      Object.assign(cubeIconOffsetY, s.cubeIconOffsetY || {});
+      Object.entries(s.cubePositions || {}).forEach(([k,v]) => cubePositions[k] = [...v]);
+      render();
+      saveSettings();
+      _undoing = false;
+    }
+
+    function _pushHistory() {
+      if (_undoing) return;
+      clearTimeout(_histTimer);
+      _histTimer = setTimeout(() => {
+        const snap = captureState();
+        if (snap === _history[_histIdx]) return; // no change
+        _history.splice(_histIdx + 1);            // drop redo branch
+        _history.push(snap);
+        if (_history.length > 80) _history.shift(); else _histIdx++;
+      }, 600);
+    }
+
+    document.addEventListener('keydown', e => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        if (_histIdx > 0) { _histIdx--; restoreState(_history[_histIdx]); }
+      } else if (mod && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
+        e.preventDefault();
+        if (_histIdx < _history.length - 1) { _histIdx++; restoreState(_history[_histIdx]); }
+      }
+    });
+
+    // Wrap renderScene to auto-save, re-apply selection, and push history
     const _renderScene = renderScene;
     renderScene = function() {
       _renderScene();
       saveSettings();
+      _pushHistory();
       if (selectedCube !== null) {
         document.querySelectorAll('[data-cube-index]').forEach(g => {
           g.style.opacity = (parseInt(g.getAttribute('data-cube-index')) === selectedCube) ? '1' : '0.4';
@@ -1088,6 +1623,7 @@
     });
     document.getElementById('flatShading').addEventListener('change', renderScene);
     document.getElementById('showShadow').addEventListener('change', renderScene);
+    document.getElementById('outlineStroke').addEventListener('change', renderScene);
     document.getElementById('autoLabel').addEventListener('change', e => {
       const list = document.getElementById('color-list');
       Array.from(list.children).forEach((row, i) => {
@@ -1124,16 +1660,25 @@
         autoLabel:       document.getElementById('autoLabel').checked,
         flatShading:     document.getElementById('flatShading').checked,
         showShadow:      document.getElementById('showShadow').checked,
+        outlineStroke:   document.getElementById('outlineStroke').checked,
         strokeWidth:     document.getElementById('strokeWidth').value,
         strokeColor:     document.getElementById('strokeColor').value,
         strokeMatchCube: document.getElementById('strokeMatchCube').checked,
         cornerRadius:    document.getElementById('cornerRadius').value,
         stackDir:        document.getElementById('stackDir').value,
         customMode:      document.getElementById('customMode').checked,
-        cubeColors:    { ...cubeColors    },
-        cubeTexts:     { ...cubeTexts     },
-        cubeFaces:     { ...cubeFaces     },
-        cubePositions: { ...cubePositions },
+        cubeColors:      { ...cubeColors      },
+        cubeTexts:       { ...cubeTexts       },
+        cubeFaces:       { ...cubeFaces       },
+        cubePositions:   Object.fromEntries(Object.entries(cubePositions).map(([k,v]) => [k,[...v]])),
+        cubeHidden:      { ...cubeHidden      },
+        cubeIcons:       { ...cubeIcons       },
+        cubeIconFaces:   { ...cubeIconFaces   },
+        cubeIconColors:  { ...cubeIconColors  },
+        cubeIconFills:   { ...cubeIconFills   },
+        cubeIconScale:   { ...cubeIconScale   },
+        cubeIconOffsetX: { ...cubeIconOffsetX },
+        cubeIconOffsetY: { ...cubeIconOffsetY },
       };
       const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
       const url  = URL.createObjectURL(blob);
@@ -1163,6 +1708,7 @@
           document.getElementById('autoLabel').checked   = s.autoLabel   ?? false;
           document.getElementById('flatShading').checked    = s.flatShading  ?? false;
           document.getElementById('showShadow').checked     = s.showShadow   ?? false;
+          document.getElementById('outlineStroke').checked  = s.outlineStroke ?? false;
           document.getElementById('strokeWidth').value          = s.strokeWidth      ?? 1.5;
           document.getElementById('strokeColor').value          = s.strokeColor      ?? '#000000';
           const _mc = s.strokeMatchCube ?? false;
@@ -1178,14 +1724,22 @@
           document.getElementById('fontValue').textContent  = s.font  ?? 12;
           document.getElementById('scaleValue').textContent = parseFloat(s.scale ?? 1).toFixed(1);
           document.body.style.background = s.bgColor ?? '#ffffff';
-          Object.keys(cubeColors).forEach(k    => delete cubeColors[k]);
-          Object.keys(cubeTexts).forEach(k     => delete cubeTexts[k]);
-          Object.keys(cubeFaces).forEach(k     => delete cubeFaces[k]);
+          [cubeColors, cubeTexts, cubeFaces, cubeHidden, cubeIcons, cubeIconFaces,
+           cubeIconColors, cubeIconFills, cubeIconScale, cubeIconOffsetX, cubeIconOffsetY]
+            .forEach(obj => Object.keys(obj).forEach(k => delete obj[k]));
           Object.keys(cubePositions).forEach(k => delete cubePositions[k]);
-          Object.assign(cubeColors, s.cubeColors || {});
-          Object.assign(cubeTexts,  s.cubeTexts  || {});
-          Object.assign(cubeFaces,  s.cubeFaces  || {});
+          Object.assign(cubeColors,      s.cubeColors      || {});
+          Object.assign(cubeTexts,       s.cubeTexts       || {});
+          Object.assign(cubeFaces,       s.cubeFaces       || {});
           Object.entries(s.cubePositions || {}).forEach(([k,v]) => cubePositions[k] = [...v]);
+          Object.assign(cubeHidden,      s.cubeHidden      || {});
+          Object.assign(cubeIcons,       s.cubeIcons       || {});
+          Object.assign(cubeIconFaces,   s.cubeIconFaces   || {});
+          Object.assign(cubeIconColors,  s.cubeIconColors  || {});
+          Object.assign(cubeIconFills,   s.cubeIconFills   || {});
+          Object.assign(cubeIconScale,   s.cubeIconScale   || {});
+          Object.assign(cubeIconOffsetX, s.cubeIconOffsetX || {});
+          Object.assign(cubeIconOffsetY, s.cubeIconOffsetY || {});
           render();
         } catch {
           alert('Invalid JSON file.');
@@ -1212,24 +1766,44 @@
     });
 
     document.getElementById('copySvg').addEventListener('click', () => {
+      const btn = document.getElementById('copySvg');
       const svg = document.getElementById('scene');
       const serializer = new XMLSerializer();
-      const svgStr = '<?xml version="1.0" encoding="UTF-8"?>\n' + serializer.serializeToString(svg);
-      navigator.clipboard.writeText(svgStr).then(() => {
-        const btn = document.getElementById('copySvg');
-        const orig = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => { btn.textContent = orig; }, 1500);
-      });
+      const svgStr = serializer.serializeToString(svg);
+      const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        const scale = 2; // 2× for crisp output
+        const canvas = document.createElement('canvas');
+        canvas.width  = img.naturalWidth  * scale;
+        canvas.height = img.naturalHeight * scale;
+        const ctx = canvas.getContext('2d');
+        // Fill background to match the scene background color
+        ctx.fillStyle = document.getElementById('bgColor').value;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(pngBlob => {
+          navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])
+            .then(() => {
+              const orig = btn.textContent;
+              btn.textContent = 'Copied!';
+              setTimeout(() => { btn.textContent = orig; }, 1500);
+            });
+        }, 'image/png');
+      };
+      img.src = url;
     });
 
     document.getElementById('clearStorage').addEventListener('click', () => {
       if (confirm('Clear all saved settings and reset to defaults?')) {
         localStorage.removeItem(STORAGE_KEY);
         // Reset state
-        Object.keys(cubeColors).forEach(k    => delete cubeColors[k]);
-        Object.keys(cubeTexts).forEach(k     => delete cubeTexts[k]);
-        Object.keys(cubeFaces).forEach(k     => delete cubeFaces[k]);
+        [cubeColors, cubeTexts, cubeFaces, cubeHidden, cubeIcons, cubeIconFaces,
+         cubeIconColors, cubeIconFills, cubeIconScale, cubeIconOffsetX, cubeIconOffsetY]
+          .forEach(obj => Object.keys(obj).forEach(k => delete obj[k]));
         Object.keys(cubePositions).forEach(k => delete cubePositions[k]);
         document.getElementById('cubeCount').value   = 1;
         document.getElementById('gapSlider').value   = 0;
@@ -1254,6 +1828,54 @@
       }
     });
 
+    // ── Color Palettes ──────────────────────────────────────────
+    const PALETTES = [
+      { name: 'Ocean',      colors: ['#1a6b8a','#2196a8','#45b8c2','#7dd4d8','#b5eaed','#d6f4f5'] },
+      { name: 'Sunset',     colors: ['#c0392b','#e05c2a','#f39c12','#f5c518','#f7dc6f','#fdebd0'] },
+      { name: 'Forest',     colors: ['#1b4332','#2d6a4f','#40916c','#74c69d','#b7e4c7','#d8f3dc'] },
+      { name: 'Monochrome', colors: ['#111111','#333333','#555555','#888888','#bbbbbb','#eeeeee'] },
+      { name: 'Candy',      colors: ['#e91e8c','#9c27b0','#3f51b5','#2196f3','#00bcd4','#4caf50'] },
+      { name: 'Desert',     colors: ['#7b3f00','#b5600a','#d4843e','#e8c07d','#f5deb3','#fffacd'] },
+      { name: 'Nordic',     colors: ['#2e3440','#3b4252','#434c5e','#4c566a','#81a1c1','#88c0d0'] },
+      { name: 'Pastel',     colors: ['#ffb3ba','#ffdfba','#ffffba','#baffc9','#bae1ff','#e8baff'] },
+    ];
+
+    (function buildPaletteUI() {
+      const grid = document.getElementById('palette-grid');
+      PALETTES.forEach(palette => {
+        const row = document.createElement('div');
+        row.className = 'palette-row';
+        row.title = `Apply "${palette.name}" palette`;
+
+        const swatches = document.createElement('div');
+        swatches.className = 'palette-swatches';
+        palette.colors.forEach(c => {
+          const sw = document.createElement('div');
+          sw.className = 'palette-swatch';
+          sw.style.background = c;
+          swatches.appendChild(sw);
+        });
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'palette-name';
+        nameEl.textContent = palette.name;
+
+        row.appendChild(swatches);
+        row.appendChild(nameEl);
+
+        row.addEventListener('click', () => {
+          const count = Math.min(64, Math.max(1, parseInt(document.getElementById('cubeCount').value) || 1));
+          const cols = palette.colors;
+          for (let i = 0; i < count; i++) {
+            cubeColors[i] = cols[i % cols.length];
+          }
+          render();
+        });
+
+        grid.appendChild(row);
+      });
+    })();
+
     loadSettings();
     // Sync stroke color picker disabled state after loading
     const _matchCube = document.getElementById('strokeMatchCube');
@@ -1262,6 +1884,9 @@
       document.getElementById('strokeColor').disabled = true;
     }
     render();
+    // Seed undo history with the initial state so Ctrl+Z has a base to return to
+    _history.push(captureState());
+    _histIdx = 0;
   </script>
 </body>
 </html>
