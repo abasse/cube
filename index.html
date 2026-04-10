@@ -891,7 +891,18 @@
         cubeGroup.appendChild(outerEl);
       }
 
-      if (text && text.trim()) {
+      if (iconSvg && iconSvg.trim()) {
+        // Icon takes priority over text; uses the same face selector
+        const col = iconColor || '#000000';
+        const drawIconL = () => drawIconOnFace(cubeGroup, iconSvg, col, vp(0,1,0), vp(1,1,0), vp(0,1,1));
+        const drawIconR = () => drawIconOnFace(cubeGroup, iconSvg, col, vp(1,1,0), vp(1,0,0), vp(1,1,1));
+        const drawIconT = () => drawIconOnFace(cubeGroup, iconSvg, col, vp(0,1,1), vp(1,1,1), vp(0,0,1));
+
+        if      (textFace === 'left')  drawIconL();
+        else if (textFace === 'right') drawIconR();
+        else if (textFace === 'top')   drawIconT();
+        else if (textFace === 'all')   { drawIconL(); drawIconR(); drawIconT(); }
+      } else if (text && text.trim()) {
         const lines = text.trim().split('_').map(l => l.trim()).filter(l => l.length > 0);
         const fontSize = parseInt(document.getElementById('fontSlider').value);
 
@@ -903,18 +914,6 @@
         else if (textFace === 'right') drawRight();
         else if (textFace === 'top')   drawTop();
         else if (textFace === 'all')   { drawLeft(); drawRight(); drawTop(); }
-      }
-
-      if (iconSvg && iconSvg.trim()) {
-        const col = iconColor || '#000000';
-        const drawIconL = () => drawIconOnFace(cubeGroup, iconSvg, col, vp(0,1,0), vp(1,1,0), vp(0,1,1));
-        const drawIconR = () => drawIconOnFace(cubeGroup, iconSvg, col, vp(1,1,0), vp(1,0,0), vp(1,1,1));
-        const drawIconT = () => drawIconOnFace(cubeGroup, iconSvg, col, vp(0,1,1), vp(1,1,1), vp(0,0,1));
-
-        if      (iconFace === 'left')  drawIconL();
-        else if (iconFace === 'right') drawIconR();
-        else if (iconFace === 'top')   drawIconT();
-        else if (iconFace === 'all')   { drawIconL(); drawIconR(); drawIconT(); }
       }
     }
 
@@ -1066,17 +1065,6 @@
         renderScene();
       });
 
-      // Icon face selector
-      const iconFaceSelect = document.createElement('select');
-      iconFaceSelect.className = 'cube-face-select';
-      [['left','Left'],['right','Right'],['top','Top'],['all','All sides']].forEach(([val, label]) => {
-        const opt = document.createElement('option');
-        opt.value = val; opt.textContent = label;
-        if (val === cubeIconFaces[i]) opt.selected = true;
-        iconFaceSelect.appendChild(opt);
-      });
-      iconFaceSelect.addEventListener('change', e => { cubeIconFaces[i] = e.target.value; renderScene(); });
-
       // Icon stroke color picker
       const iconColorInput = document.createElement('input');
       iconColorInput.type = 'color';
@@ -1089,7 +1077,6 @@
       strokeLbl.textContent = 'Stroke';
       iconControls.appendChild(strokeLbl);
       iconControls.appendChild(iconColorInput);
-      iconControls.appendChild(iconFaceSelect);
 
       iconSection.appendChild(iconTextarea);
       iconSection.appendChild(iconControls);
